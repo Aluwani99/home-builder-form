@@ -67,3 +67,11 @@ jobs:
           app-name: 'home-builder-form'
           slot-name: 'Production'
           package: backend
+
+      # Deploy frontend build folder (optional)
+      - name: Deploy frontend to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'home-builder-form'
+          slot-name: 'Production'
+          package: frontend/build
