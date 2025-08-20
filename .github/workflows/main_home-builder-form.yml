@@ -1,5 +1,9 @@
 name: Build and deploy Node.js app to Azure Web App - home-builder-form
 
+permissions:
+  id-token: write
+  contents: read
+
 on:
   push:
     branches:
@@ -58,3 +62,4 @@ jobs:
           app-name: 'home-builder-form'
           slot-name: 'Production'
           package: backend
+
