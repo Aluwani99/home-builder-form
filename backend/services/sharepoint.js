@@ -12,14 +12,28 @@ dotenv.config();
  */
 export async function uploadFileToSharePoint(fileContent, fileName, client, siteId, folderPath = 'Shared Documents') {
   const encodedFileName = encodeURIComponent(fileName);
+  
+  // Remove any duplicate "Shared Documents" from the path
+  if (folderPath.includes('Shared Documents/Shared Documents')) {
+    folderPath = folderPath.replace('Shared Documents/Shared Documents', 'Shared Documents');
+  }
+  
   const uploadPath = `/sites/${siteId}/drive/root:/${folderPath}/${encodedFileName}:/content`;
 
   console.log(`Uploading file "${fileName}" to "${uploadPath}"`);
 
-  const response = await client.api(uploadPath).put(fileContent);
-
-  console.log(`Uploaded file URL: ${response.webUrl}`);
-  return response.webUrl;
+  try {
+    const response = await client.api(uploadPath).put(fileContent);
+    
+    // Get the full web URL, not just the path
+    const webUrl = response.webUrl || `https://${process.env.SHAREPOINT_SITE_URL || 'sharepoint.com'}${response.parentReference.path}/${fileName}`;
+    
+    console.log(`Uploaded file URL: ${webUrl}`);
+    return webUrl;
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    throw error;
+  }
 }
 
 /**
