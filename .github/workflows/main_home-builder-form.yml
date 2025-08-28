@@ -1,8 +1,23 @@
+name: Build and deploy Node.js app to Azure Web App - home-builder-form
+
+# Trigger on push to main branch or manual workflow_dispatch
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Permissions for repository content (default)
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       # Install backend dependencies
       - name: Install backend dependencies
@@ -10,14 +25,15 @@ jobs:
           cd backend
           npm install
 
-      # Install frontend dependencies if any (optional)
+      # Install frontend dependencies if any
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm install || echo "No frontend dependencies"
+          npm install || echo "No frontend dependencies to install"
 
       # Upload both backend and frontend for deployment
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts for deployment
+        uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: |
@@ -28,16 +44,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/download-artifact@v4
+      # Download artifacts from build job
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
         with:
           name: node-app
 
+      # Login to Azure using Service Principal
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           auth-type: service_principal
 
+      # Deploy backend + frontend to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
