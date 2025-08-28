@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { saveToSharePoint, uploadFileToSharePoint, getSiteId } from './services/sharepoint.js';
 import getGraphClient from './config/auth.js';
 
@@ -10,17 +11,20 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-const upload = multer(); // memory storage for files
+const upload = multer(); // memory storage
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 app.use(cors());
 app.use(express.json());
 
 // Serve frontend static files
-app.use(express.static(path.join(process.cwd(), 'frontend')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Root route serves index.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'frontend', 'index.html'));
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.send('Backend is running...');
 });
 
 // Form submit endpoint
@@ -31,6 +35,7 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
 
     const client = await getGraphClient();
     const siteId = await getSiteId(client);
+
     const uploadedFileUrls = [];
     const builderName = req.body.builderName || 'unknown';
 
@@ -53,6 +58,11 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
   }
 });
 
+// Serve frontend for all other routes (SPA support)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+});
+
 app.listen(port, () => {
-  console.log(`✅ Server started on port ${port}`);
+  console.log(`✅ Server started on http://localhost:${port}`);
 });
