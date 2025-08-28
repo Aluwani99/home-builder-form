@@ -15,8 +15,11 @@ const upload = multer();
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend static files from sibling folder
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Use process.cwd() to point to root of wwwroot
+const frontendPath = path.join(process.cwd(), 'frontend');
+
+// Serve static files
+app.use(express.static(frontendPath));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -52,7 +55,7 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
 
 // SPA fallback
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.listen(port, () => {
