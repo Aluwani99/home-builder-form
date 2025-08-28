@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout your repo
+      # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -26,23 +26,28 @@ jobs:
         working-directory: backend
         run: npm install
 
-      # 4️⃣ Copy frontend files to backend/public
+      # 4️⃣ Copy frontend files into backend/public
       - name: Copy frontend to backend/public
         run: |
           mkdir -p backend/public
           cp -r frontend/* backend/public/
 
-      # 5️⃣ Zip backend for Azure deploy
+      # 5️⃣ Zip backend for Azure deployment
       - name: Zip backend for deployment
         run: |
           cd backend
           zip -r ../release.zip .
 
-      # 6️⃣ Deploy to Azure Web App
+      # 6️⃣ Login to Azure using Service Principal
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 7️⃣ Deploy to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'home-builder-form'
           slot-name: 'production'
           package: release.zip
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
