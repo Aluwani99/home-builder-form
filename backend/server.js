@@ -15,10 +15,8 @@ const upload = multer();
 app.use(cors());
 app.use(express.json());
 
-// Use process.cwd() to point to root of wwwroot
-const frontendPath = path.join(process.cwd(), 'frontend');
-
-// Serve static files
+// Serve static files from frontend-build directory
+const frontendPath = path.join(process.cwd(), 'frontend-build');
 app.use(express.static(frontendPath));
 
 // Health check
@@ -53,9 +51,13 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
   }
 });
 
-// SPA fallback
+// SPA fallback - serve index.html for all non-API routes
 app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
+  if (!req.path.startsWith('/api/')) {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  } else {
+    res.status(404).json({ error: 'API endpoint not found' });
+  }
 });
 
 app.listen(port, () => {
