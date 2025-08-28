@@ -6,85 +6,43 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-env:
-  NODE_VERSION: '20.x'
-  AZURE_WEBAPP_NAME: 'home-builder-form'
-
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
+      # 1️⃣ Checkout your repo
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          node-version: '20.x'
 
+      # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
+        working-directory: backend
+        run: npm install
+
+      # 4️⃣ Copy frontend files to backend/public
+      - name: Copy frontend to backend/public
+        run: |
+          mkdir -p backend/public
+          cp -r frontend/* backend/public/
+
+      # 5️⃣ Zip backend for Azure deploy
+      - name: Zip backend for deployment
         run: |
           cd backend
-          npm ci --production
+          zip -r ../release.zip .
 
-      - name: Create deployment package
-        run: |
-          rm -rf deployment
-          mkdir -p deployment
-          cp -r backend/* deployment/
-          mkdir -p deployment/public
-          cp -r frontend/* deployment/public/
-          rm -rf deployment/public/node_modules 2>/dev/null || true
-          rm -f deployment/public/package.json 2>/dev/null || true
-          rm -f deployment/public/package-lock.json 2>/dev/null || true
-          echo "Deployment package contents:"
-          find deployment -name "*.js" -o -name "*.json" -o -name "*.html" | head -15
-          echo "Server.js location:"
-          find deployment -name "server.js"
-
-      - name: Upload artifact for deployment
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: deployment
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: 'production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-          path: .
-
-      - name: Verify deployment files
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Files in root:"
-          ls -la
-          echo "Server.js exists:"
-          test -f server.js && echo "YES - $(pwd)/server.js" || echo "NO"
-          echo "Package.json exists:"
-          test -f package.json && echo "YES - $(pwd)/package.json" || echo "NO"
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
+      # 6️⃣ Deploy to Azure Web App
       - name: Deploy to Azure Web App
-        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          slot-name: 'Production'
-          package: .
+          app-name: 'home-builder-form'
+          slot-name: 'production'
+          package: release.zip
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
