@@ -51,3 +51,4 @@ jobs:
           app-name: 'home-builder-form'
           slot-name: 'production'
           package: release.zip
+          enable-oryx-build: false   # Prevent Azure from rebuilding Node.js app, use your zip
