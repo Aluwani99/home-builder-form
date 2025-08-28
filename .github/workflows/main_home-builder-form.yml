@@ -1,13 +1,13 @@
 name: Build and deploy Node.js app to Azure Web App - home-builder-form
 
-# Trigger on push to main branch or manual workflow_dispatch
+# Trigger workflow on push to main or manual dispatch
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
-# Required permissions (optional, OIDC not used here)
+# Minimal permissions (SP login doesn’t need id-token)
 permissions:
   contents: read
 
@@ -70,3 +70,11 @@ jobs:
           app-name: 'home-builder-form'
           slot-name: 'Production'
           package: backend
+
+      # Deploy frontend (if needed)
+      - name: Deploy frontend to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'home-builder-form'
+          slot-name: 'Production'
+          package: frontend/build
