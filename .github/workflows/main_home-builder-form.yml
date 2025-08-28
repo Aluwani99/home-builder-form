@@ -34,23 +34,14 @@ jobs:
 
       - name: Create deployment package
         run: |
-          # Create clean deployment directory
           rm -rf deployment
           mkdir -p deployment
-          
-          # Copy backend files
           cp -r backend/* deployment/
-          
-          # Copy frontend to public directory
           mkdir -p deployment/public
           cp -r frontend/* deployment/public/
-          
-          # Clean up unnecessary files
           rm -rf deployment/public/node_modules 2>/dev/null || true
           rm -f deployment/public/package.json 2>/dev/null || true
           rm -f deployment/public/package-lock.json 2>/dev/null || true
-          
-          # Verify deployment structure
           echo "Deployment package contents:"
           find deployment -name "*.js" -o -name "*.json" -o -name "*.html" | head -15
           echo "Server.js location:"
