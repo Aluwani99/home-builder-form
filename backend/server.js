@@ -1,9 +1,8 @@
 import express from 'express';
+import path from 'path';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { saveToSharePoint, uploadFileToSharePoint, getSiteId } from './services/sharepoint.js';
 import getGraphClient from './config/auth.js';
 
@@ -11,23 +10,20 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-const upload = multer(); // memory storage
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const upload = multer(); // memory storage for files
 
 app.use(cors());
 app.use(express.json());
 
 // Serve frontend static files
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
-// Health check endpoint
+// Health check
 app.get('/api/health', (req, res) => {
-  res.send('Backend is running...');
+  res.json({ status: 'Backend is running...' });
 });
 
-// Form submit endpoint
+// Form submit endpoint with file upload
 app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
   try {
     console.log('Incoming form data:', req.body);
@@ -58,9 +54,9 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
   }
 });
 
-// Serve frontend for all other routes (SPA support)
+// Serve frontend index.html for all other routes (SPA fallback)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+  res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
 });
 
 app.listen(port, () => {
