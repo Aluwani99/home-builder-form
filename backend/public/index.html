@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Builder Submission Form</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 20px;
+      background: #f4f6f9;
+      color: #333;
+    }
+    .form-container {
+      max-width: 700px;
+      margin: auto;
+      background: #fff;
+      padding: 25px 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo {
+      height: 60px;
+      margin-bottom: 10px;
+    }
+    .form-section {
+      display: none;
+    }
+    .form-section.active {
+      display: block;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label.required::after {
+      content: " *";
+      color: red;
+    }
+    select, input, textarea {
+      width: 100%;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    textarea {
+      resize: vertical;
+    }
+    .form-navigation {
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 15px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background-color: #0078d4;
+      color: white;
+    }
+    .btn-secondary {
+      background-color: #ccc;
+      color: #333;
+    }
+    #formMessage {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 6px;
+      display: none;
+    }
+    #formMessage.success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    #formMessage.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <header>
+      <img src="Public/nbhrc_logo1.jpg" alt="Company Logo" class="logo" />
+      <h1>Home Builder Submission Form</h1>
+    </header>
+
+    <form id="homeBuilderForm" novalidate>
+      <!-- Step 1 -->
+      <section class="form-section active" id="step1">
+        <div class="form-group">
+          <label for="province" class="required">Province</label>
+          <select id="province" name="province" required>
+            <option value="" disabled selected>Select your province</option>
+            <option>Eastern Cape</option>
+            <option>Free State</option>
+            <option>Gauteng</option>
+            <option>KwaZulu Natal</option>
+            <option>Limpopo</option>
+            <option>Mpumalanga</option>
+            <option>North West</option>
+            <option>Northern Cape</option>
+            <option>Western Cape</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="builderName" class="required">Home Builder Name and Surname</label>
+          <input type="text" id="builderName" name="builderName" required />
+        </div>
+        <div class="form-group">
+          <label for="companyName" class="required">Home Builder Company Name</label>
+          <input type="text" id="companyName" name="companyName" required />
+        </div>
+        <div class="form-group">
+          <label for="registrationNumber" class="required">Home Builder Registration Number</label>
+          <input type="text" id="registrationNumber" name="registrationNumber" required />
+        </div>
+        <div class="form-navigation">
+          <div></div>
+          <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section class="form-section" id="step2">
+        <div class="form-group">
+          <label for="propertyDetails" class="required">Property Details</label>
+          <textarea id="propertyDetails" name="propertyDetails" rows="3" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="competentPerson" class="required">Competent Person Name</label>
+          <input type="text" id="competentPerson" name="competentPerson" required />
+        </div>
+        <div class="form-navigation">
+          <button type="button" class="btn btn-secondary" onclick="prevStep()">Back</button>
+          <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+        </div>
+      </section>
+
+      <!-- Step 3 -->
+      <section class="form-section" id="step3">
+        <div class="form-group">
+          <label for="fileUpload" class="required">Upload D1 Form and Appendices</label>
+          <input type="file" id="fileUpload" name="fileUpload" multiple />
+          <small>Max 10 files, formats: Word, Excel, PDF, Image, etc.</small>
+        </div>
+        <div class="form-navigation">
+          <button type="button" class="btn btn-secondary" onclick="prevStep()">Back</button>
+          <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+        </div>
+      </section>
+
+      <!-- Step 4 -->
+<!-- Inside Step 4 -->
+<section class="form-section" id="step4">
+  <p>Please review your information before submitting.</p>
+  <div class="form-navigation">
+    <button type="button" class="btn btn-secondary" onclick="prevStep()">Back</button>
+    <button type="submit" id="submitBtn" class="btn btn-primary">Submit Form</button>
+  </div>
+</section>
+    </form>
+
+    <div id="formMessage"></div>
+  </div>
+
+<script>
+  let currentStep = 1;
+  const totalSteps = 4;
+
+  function showStep(step) {
+    document.querySelectorAll('.form-section').forEach((section, index) => {
+      section.classList.toggle('active', index === step - 1);
+    });
+  }
+
+  function nextStep() {
+    const currentSection = document.querySelector(`.form-section:nth-child(${currentStep})`);
+    const form = document.getElementById('homeBuilderForm');
+
+    // Basic validation for current step before moving on
+    const inputs = currentSection.querySelectorAll('input, select, textarea');
+    for (const input of inputs) {
+      if (input.hasAttribute('required') && !input.value.trim()) {
+        input.reportValidity();
+        return;
+      }
+    }
+
+    if (currentStep < totalSteps) {
+      currentStep++;
+      showStep(currentStep);
+    }
+  }
+
+  function prevStep() {
+    if (currentStep > 1) {
+      currentStep--;
+      showStep(currentStep);
+    }
+  }
+
+document.getElementById('homeBuilderForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const form = e.target;
+  const formMessage = document.getElementById('formMessage');
+  const submitBtn = document.getElementById('submitBtn');
+
+  // Disable button to prevent double clicks
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Submitting...";
+
+  // Create FormData to send files + fields
+  const formData = new FormData(form);
+
+  formMessage.style.display = 'none';
+  formMessage.textContent = '';
+  formMessage.className = '';
+
+  try {
+    const response = await fetch('http://localhost:5000/api/submit-form', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert('✅ Thank you for completing the form!');
+      formMessage.textContent = 'Thank you for completing the form! Your submission was successful.';
+      formMessage.className = 'success';
+      formMessage.style.display = 'block';
+
+      form.reset();
+      currentStep = 1;
+      showStep(currentStep);
+    } else {
+      formMessage.textContent = 'Error: ' + (data.error || 'Unknown error');
+      formMessage.className = 'error';
+      formMessage.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Form";
+    }
+  } catch (err) {
+    formMessage.textContent = 'An error occurred while submitting. Please try again.';
+    formMessage.className = 'error';
+    formMessage.style.display = 'block';
+    console.error('Submission error:', err);
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit Form";
+  }
+});
+
+  // Initialize the form
+  showStep(currentStep);
+</script>
+</body>
+</html>
