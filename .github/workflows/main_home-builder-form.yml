@@ -6,10 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  AZURE_WEBAPP_NAME: home-builder-form
-  NODE_VERSION: '20.x'
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -23,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20.x'
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
@@ -40,36 +36,18 @@ jobs:
       - name: Zip backend for deployment
         run: |
           cd backend
-          zip -r ../release.zip . -x "node_modules/*" ".env"
+          zip -r ../release.zip .
 
-      # 6️⃣ Upload artifact for debugging
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: release.zip
-
-      # 7️⃣ Login to Azure using Service Principal
+      # 6️⃣ Login to Azure using Service Principal
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 8️⃣ Deploy to Azure Web App
+      # 7️⃣ Deploy to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          app-name: 'home-builder-form'
           slot-name: 'production'
           package: release.zip
-
-      # 9️⃣ Set environment variables in Azure
-      - name: Set Azure environment variables
-        run: |
-          az webapp config appsettings set --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --settings \
-            SHAREPOINT_CLIENT_ID="${{ secrets.SHAREPOINT_CLIENT_ID }}" \
-            SHAREPOINT_CLIENT_SECRET="${{ secrets.SHAREPOINT_CLIENT_SECRET }}" \
-            SHAREPOINT_TENANT_ID="${{ secrets.SHAREPOINT_TENANT_ID }}" \
-            SHAREPOINT_SITE_URL="${{ secrets.SHAREPOINT_SITE_URL }}" \
-            SHAREPOINT_LIST_NAME="${{ secrets.SHAREPOINT_LIST_NAME }}" \
-            NODE_ENV="production"
