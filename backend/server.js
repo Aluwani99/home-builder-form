@@ -3,8 +3,13 @@ import path from 'path';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import multer from 'multer';
+import { fileURLToPath } from 'url';
 import { saveToSharePoint, uploadFileToSharePoint, getSiteId } from './services/sharepoint.js';
 import getGraphClient from './config/auth.js';
+
+// ES module fix for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -14,12 +19,12 @@ const upload = multer();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from frontend-build directory
-const frontendPath = path.join(process.cwd(), 'frontend-build');
-app.use(express.static(frontendPath));
+// Serve static files from the public directory (frontend)
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Health check
+// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend is running...' });
 });
@@ -33,33 +38,51 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
     const uploadedFileUrls = [];
     const builderName = req.body.builderName || 'unknown';
 
-    for (const file of req.files) {
-      const ext = file.originalname.substring(file.originalname.lastIndexOf('.'));
-      const sanitizedBuilderName = builderName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const newFileName = `${sanitizedBuilderName}${ext}`;
-      const fileUrl = await uploadFileToSharePoint(file.buffer, newFileName, client, siteId, 'Shared Documents');
-      uploadedFileUrls.push(fileUrl);
+    // Process file uploads
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const ext = path.extname(file.originalname);
+        const sanitizedBuilderName = builderName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const newFileName = `${sanitizedBuilderName}_${Date.now()}${ext}`;
+        const fileUrl = await uploadFileToSharePoint(file.buffer, newFileName, client, siteId, 'Shared Documents');
+        uploadedFileUrls.push(fileUrl);
+      }
     }
 
     const formData = { ...req.body, uploadedFileUrls };
     const savedItem = await saveToSharePoint(formData, client, siteId);
 
-    res.json({ success: true, itemId: savedItem.id, uploadedFileUrls });
+    res.json({ 
+      success: true, 
+      message: 'Form submitted successfully',
+      itemId: savedItem.id, 
+      uploadedFileUrls 
+    });
   } catch (error) {
     console.error('❌ Error processing form:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: 'Failed to process form submission' 
+    });
   }
 });
 
-// SPA fallback - serve index.html for all non-API routes
+// Serve the frontend for all non-API routes
 app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api/')) {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-  } else {
-    res.status(404).json({ error: 'API endpoint not found' });
-  }
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({ 
+    success: false, 
+    error: 'Internal server error' 
+  });
 });
 
 app.listen(port, () => {
   console.log(`✅ Server started on http://localhost:${port}`);
+  console.log(`📁 Serving frontend from: ${path.join(__dirname, 'public')}`);
 });
