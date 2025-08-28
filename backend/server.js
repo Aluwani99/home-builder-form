@@ -26,7 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 // Determine frontend path based on environment
 let frontendPath;
 if (process.env.NODE_ENV === 'production') {
-  // In production on Azure, frontend is in public directory
+  // In production on Azure, frontend is copied to backend/public
   frontendPath = path.join(__dirname, 'public');
 } else {
   // In development, frontend is in sibling directory
