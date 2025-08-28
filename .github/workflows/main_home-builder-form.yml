@@ -1,64 +1,86 @@
 name: Build and deploy Node.js app to Azure Web App - home-builder-form
 
-# Trigger on push to main branch or manual workflow_dispatch
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
-# Permissions for repository content (default)
 permissions:
   contents: read
+
+env:
+  NODE_VERSION: '20.x'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Install backend dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
       - name: Install backend dependencies
         run: |
           cd backend
-          npm install
+          npm ci
 
-      # Install frontend dependencies if any
-      - name: Install frontend dependencies
+      - name: Prepare deployment package
         run: |
-          cd frontend
-          npm install || echo "No frontend dependencies to install"
+          # Create deployment directory
+          mkdir -p deployment
+          
+          # Copy backend files
+          cp -r backend/* deployment/
+          cp backend/.* deployment/ 2>/dev/null || true
+          
+          # Create public directory and copy frontend files
+          mkdir -p deployment/public
+          cp -r frontend/* deployment/public/
+          
+          # Clean up unnecessary files
+          rm -rf deployment/public/node_modules 2>/dev/null || true
+          rm deployment/public/package.json 2>/dev/null || true
+          rm deployment/public/package-lock.json 2>/dev/null || true
+          
+          # List files for verification
+          echo "Deployment package contents:"
+          find deployment -type f -name "*.js" -o -name "*.json" -o -name "*.html" | head -20
 
-      # Upload both backend and frontend for deployment
-      - name: Upload artifacts for deployment
+      - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: |
-            backend
-            frontend
+          path: deployment
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    environment:
+      name: 'production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     steps:
-      # Download artifacts from build job
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
 
-      # Login to Azure using Service Principal
+      - name: List files in artifact
+        run: ls -la && find . -name "*.js" -o -name "*.json" -o -name "*.html" | head -20
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-          auth-type: service_principal
 
-      # Deploy backend + frontend to Azure Web App
       - name: Deploy to Azure Web App
+        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'home-builder-form'
