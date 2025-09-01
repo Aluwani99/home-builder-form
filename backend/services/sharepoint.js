@@ -88,6 +88,7 @@ export async function saveToSharePoint(formData, client, siteId) {
   // Prepare fields to create the new list item
   const fields = {
     Title: formData.builderName,
+    ReferenceNumber: formData.referenceNumber,
     Province: formData.province,
     CompetentPerson: formData.competentPerson,
     PropertyDetails: formData.propertyDetails,
