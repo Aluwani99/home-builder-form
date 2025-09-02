@@ -45,6 +45,7 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
 
     const uploadedFileUrls = [];
     const builderName = req.body.builderName || 'unknown';
+    const referenceNumber = req.body.referenceNumber || 'no_ref';
 
     // Handle uploaded files
     if (req.files && req.files.length > 0) {
@@ -55,7 +56,7 @@ app.post('/api/submit-form', upload.array('fileUpload'), async (req, res) => {
           console.log(`Uploading file: ${file.originalname}, size: ${file.size} bytes`);
           const ext = path.extname(file.originalname);
           const sanitizedName = builderName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-          const newFileName = `${sanitizedName}_${Date.now()}${ext}`;
+          const newFileName = `${sanitizedName}_${referenceNumber}${ext}`;
           const fileUrl = await uploadFileToSharePoint(file.buffer, newFileName, client, siteId, 'Shared Documents');
           uploadedFileUrls.push(fileUrl);
           console.log(`Successfully uploaded: ${newFileName}`);
