@@ -1,4 +1,4 @@
-name: Build and deploy Node.js app to Azure Web App - home-builder-form
+name: Build and Deploy Node.js App to Azure Web App - Linux
 
 on:
   push:
@@ -16,15 +16,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      # 1️⃣ Checkout code
+      - uses: actions/checkout@v4
 
       # 2️⃣ Setup Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -33,69 +29,26 @@ jobs:
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
         working-directory: backend
-        run: |
-          npm ci --only=production
-          npm cache clean --force
+        run: npm ci --only=production
 
-      # 4️⃣ Copy frontend files into backend/public
-      - name: Copy frontend to backend/public
+      # 4️⃣ Copy frontend to backend/public
+      - name: Copy frontend files
         run: |
           rm -rf backend/public/*
           cp -r frontend/* backend/public/
 
-      # 4.5️⃣ Add web.config for Azure (Windows App Service)
-      - name: Add web.config for Azure
-        working-directory: backend
-        run: |
-          cat > web.config << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <system.webServer>
-              <webSocket enabled="false" />
-              <handlers>
-                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
-              </handlers>
-              <rewrite>
-                <rules>
-                  <rule name="StaticContent">
-                    <action type="Rewrite" url="public{REQUEST_URI}"/>
-                  </rule>
-                  <rule name="DynamicContent">
-                    <conditions>
-                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>
-                    </conditions>
-                    <action type="Rewrite" url="server.js"/>
-                  </rule>
-                </rules>
-              </rewrite>
-              <iisnode node_env="production" />
-            </system.webServer>
-          </configuration>
-          EOF
-          echo "✅ web.config created for Azure App Service"
-
-      # 5️⃣ Verify deployment package contents
-      - name: Check deployment package contents
+      # 5️⃣ Zip backend for deployment
+      - name: Zip backend
         run: |
           cd backend
-          find . -name "*.js" -o -name "*.json" -o -name "*.html" -o -name "web.config" | head -20
-          echo "... and other files"
+          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
 
-      # 6️⃣ Zip backend folder for Azure deployment
-      - name: Zip backend for deployment
-        run: |
-          cd backend
-          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . \
-            -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
-          echo "✅ Backend zipped for deployment"
-
-      # 7️⃣ Login to Azure using Service Principal
-      - name: Login to Azure
-        uses: azure/login@v2
+      # 6️⃣ Login to Azure
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7.5️⃣ Set Azure App Settings (Environment Variables)
+      # 7️⃣ Set Azure App Settings (env vars)
       - name: Set Azure App Settings
         run: |
           az webapp config appsettings set \
@@ -115,43 +68,11 @@ jobs:
               SHAREPOINT_SITE_MPUMALANGA=https://nhbrcsa.sharepoint.com/sites/DL-MpumalangaInspectorate \
               SHAREPOINT_SITE_NORTH_WEST=https://nhbrcsa.sharepoint.com/sites/DL-NorthWestInspectorate \
               SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
-              SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate \
-              SHAREPOINT_LIST_EASTERN_CAPE="EASTERN CAPE  D1 List" \
-              SHAREPOINT_LIST_FREE_STATE="Free State  D1 List" \
-              SHAREPOINT_LIST_GAUTENG="Gauteng  D1 List" \
-              SHAREPOINT_LIST_KWAZULU_NATAL="KWAZULU NATAL  D1 List" \
-              SHAREPOINT_LIST_LIMPOPO="Limpopo  D1 List" \
-              SHAREPOINT_LIST_MPUMALANGA="MPUMALANGA  D1 List" \
-              SHAREPOINT_LIST_NORTH_WEST="NORTH WEST  D1 List" \
-              SHAREPOINT_LIST_NORTHERN_CAPE="NORTHERN CAPE  D1 List" \
-              SHAREPOINT_LIST_WESTERN_CAPE="WESTERN CAPE  D1 List"
+              SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
 
       # 8️⃣ Deploy to Azure Web App
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+      - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
-          enable-oryx-build: false
-
-      # 9️⃣ Verify deployment health
-      - name: Verify deployment health
-        run: |
-          echo "🔄 Waiting for app to start..."
-          sleep 30
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health || true)
-          echo "Health endpoint status: $STATUS_CODE"
-          if [ "$STATUS_CODE" = "200" ]; then
-            echo "✅ Application is healthy!"
-          else
-            echo "⚠️  Health check failed. Check Azure logs."
-          fi
-
-      # 🔟 Deployment URL
-      - name: Deployment status
-        run: |
-          echo "🎉 Deployment completed!"
-          echo "🌐 Web app URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          echo "🏥 Health check: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health"
-          echo "📝 Test endpoint: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/test-submit"
