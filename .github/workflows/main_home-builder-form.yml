@@ -45,6 +45,37 @@ jobs:
           # Copy frontend files
           cp -r frontend/* backend/public/
 
+      # 4.5️⃣ Add web.config for Azure (Windows App Service)
+      - name: Add web.config for Azure
+        working-directory: backend
+        run: |
+          cat > web.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <webSocket enabled="false" />
+              <handlers>
+                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
+              </handlers>
+              <rewrite>
+                <rules>
+                  <rule name="StaticContent">
+                    <action type="Rewrite" url="public{REQUEST_URI}"/>
+                  </rule>
+                  <rule name="DynamicContent">
+                    <conditions>
+                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>
+                    </conditions>
+                    <action type="Rewrite" url="server.js"/>
+                  </rule>
+                </rules>
+              </rewrite>
+              <iisnode node_env="production" />
+            </system.webServer>
+          </configuration>
+          EOF
+          echo "✅ web.config created for Azure App Service"
+
       # 5️⃣ Create production environment file
       - name: Create production .env file
         working-directory: backend
@@ -76,22 +107,32 @@ jobs:
           SHAREPOINT_LIST_NORTHERN_CAPE=NORTHERN CAPE  D1 List
           SHAREPOINT_LIST_WESTERN_CAPE=WESTERN CAPE  D1 List
           EOF
+          echo "✅ Production .env file created"
 
-      # 6️⃣ Zip backend folder for Azure deployment
+      # 6️⃣ Verify deployment package contents
+      - name: Check deployment package contents
+        run: |
+          echo "📦 Deployment package contents:"
+          cd backend
+          find . -name "*.js" -o -name "*.json" -o -name "*.html" -o -name "web.config" -o -name ".env" | head -20
+          echo "... and other files"
+
+      # 7️⃣ Zip backend folder for Azure deployment
       - name: Zip backend for deployment
         run: |
           cd backend
           # Exclude development files from production deployment
           zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . \
             -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
+          echo "✅ Backend zipped for deployment"
 
-      # 7️⃣ Login to Azure using Service Principal
+      # 8️⃣ Login to Azure using Service Principal
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 8️⃣ Deploy to Azure Web App
+      # 9️⃣ Deploy to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
@@ -100,8 +141,33 @@ jobs:
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
           enable-oryx-build: false
 
-      # 9️⃣ Verify deployment
-      - name: Verify deployment
+      # 🔟 Verify deployment and check health
+      - name: Verify deployment health
         run: |
-          echo "Deployment completed successfully!"
-          echo "Web app URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          echo "🔄 Waiting for app to start..."
+          sleep 30
+          echo "📱 Testing health endpoint..."
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health || true)
+          echo "Health endpoint status: $STATUS_CODE"
+          
+          if [ "$STATUS_CODE" = "200" ]; then
+            echo "✅ Application is healthy!"
+          else
+            echo "⚠️  Health check failed. Checking logs..."
+            # Try to get logs
+            az webapp log download --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --log-file app_logs.zip 2>/dev/null || true
+            if [ -f app_logs.zip ]; then
+              unzip -o app_logs.zip -d logs/ 2>/dev/null || true
+              echo "📋 Application logs:"
+              cat logs/*.log 2>/dev/null | tail -20 || echo "No logs available"
+            fi
+            echo "❌ Deployment may need troubleshooting"
+          fi
+
+      # 📋 Final deployment status
+      - name: Deployment status
+        run: |
+          echo "🎉 Deployment completed!"
+          echo "🌐 Web app URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          echo "🏥 Health check: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health"
+          echo "📝 Test endpoint: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/test-submit"
