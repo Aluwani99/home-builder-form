@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  AZURE_WEBAPP_NAME: 'home-builder-form'
+  AZURE_WEBAPP_PACKAGE_PATH: 'release.zip'
+  NODE_VERSION: '20.x'
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -14,41 +19,89 @@ jobs:
       # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
         working-directory: backend
-        run: npm install
+        run: |
+          npm ci --only=production
+          npm cache clean --force
 
       # 4️⃣ Copy frontend files into backend/public
       - name: Copy frontend to backend/public
         run: |
-          mkdir -p backend/public
+          # Clean existing public folder
+          rm -rf backend/public/*
+          # Copy frontend files
           cp -r frontend/* backend/public/
 
-      # 5️⃣ Zip backend folder for Azure deployment
+      # 5️⃣ Create production environment file
+      - name: Create production .env file
+        working-directory: backend
+        run: |
+          cat > .env << EOF
+          PORT=8080
+          NODE_ENV=production
+          SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
+          SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }}
+          SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }}
+          # Province-specific SharePoint Sites
+          SHAREPOINT_SITE_EASTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-EasternCapeInspectorate
+          SHAREPOINT_SITE_FREE_STATE=https://nhbrcsa.sharepoint.com/sites/DL-FreeStateInspectorate
+          SHAREPOINT_SITE_GAUTENG=https://nhbrcsa.sharepoint.com/sites/DL-GautengInspectorate
+          SHAREPOINT_SITE_KWAZULU_NATAL=https://nhbrcsa.sharepoint.com/sites/DL-KwaZuluNatalInspectorate
+          SHAREPOINT_SITE_LIMPOPO=https://nhbrcsa.sharepoint.com/sites/DL-LimpopoInspectorate
+          SHAREPOINT_SITE_MPUMALANGA=https://nhbrcsa.sharepoint.com/sites/DL-MpumalangaInspectorate
+          SHAREPOINT_SITE_NORTH_WEST=https://nhbrcsa.sharepoint.com/sites/DL-NorthWestInspectorate
+          SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate
+          SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
+          # Province-specific List Names
+          SHAREPOINT_LIST_EASTERN_CAPE=EASTERN CAPE  D1 List
+          SHAREPOINT_LIST_FREE_STATE=Free State  D1 List
+          SHAREPOINT_LIST_GAUTENG=Gauteng  D1 List
+          SHAREPOINT_LIST_KWAZULU_NATAL=KWAZULU NATAL  D1 List
+          SHAREPOINT_LIST_LIMPOPO=Limpopo  D1 List
+          SHAREPOINT_LIST_MPUMALANGA=MPUMALANGA  D1 List
+          SHAREPOINT_LIST_NORTH_WEST=NORTH WEST  D1 List
+          SHAREPOINT_LIST_NORTHERN_CAPE=NORTHERN CAPE  D1 List
+          SHAREPOINT_LIST_WESTERN_CAPE=WESTERN CAPE  D1 List
+          EOF
+
+      # 6️⃣ Zip backend folder for Azure deployment
       - name: Zip backend for deployment
         run: |
           cd backend
-          zip -r ../release.zip .
+          # Exclude development files from production deployment
+          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . \
+            -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
 
-      # 6️⃣ Login to Azure using Service Principal
+      # 7️⃣ Login to Azure using Service Principal
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Deploy to Azure Web App
+      # 8️⃣ Deploy to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'home-builder-form'
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
-          package: release.zip
-          enable-oryx-build: false   # Prevent Azure from rebuilding Node.js app, use your zip
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          enable-oryx-build: false
+
+      # 9️⃣ Verify deployment
+      - name: Verify deployment
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Web app URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
