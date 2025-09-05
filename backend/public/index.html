@@ -894,6 +894,62 @@
       font-size: 14px;
       color: #64748b;
     }
+    /* Enhanced Address Suggestions Styles */
+#addressSuggestions li.manual-entry {
+  background-color: #f0f9ff;
+  border-left: 4px solid var(--primary);
+}
+
+#addressSuggestions li.manual-entry:hover {
+  background-color: #e0f2fe;
+}
+
+#addressSuggestions li.no-results {
+  color: var(--secondary);
+  cursor: default;
+}
+
+#addressSuggestions li.error {
+  color: var(--danger);
+  cursor: default;
+}
+
+#addressSuggestions li > div {
+  display: flex;
+  flex-direction: column;
+}
+
+#addressSuggestions li small {
+  color: var(--secondary);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* Manual entry highlight */
+.manual-mode #propertyDetails {
+  border-color: var(--primary);
+  background-color: #f0f9ff;
+}
+
+/* Instructions update */
+.instructions {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #64748b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.manual-toggle {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.manual-toggle:hover {
+  text-decoration: underline;
+}
   </style>
 </head>
 <body>
@@ -998,19 +1054,21 @@
           </div>
         </div>
         
-        <div class="form-group">
-          <label for="propertyDetails" class="required">Property Details</label>
-          <div class="suggestions-container">
-            <textarea id="propertyDetails" name="propertyDetails" rows="4" required placeholder="Start typing your address..."></textarea>
-            <div class="loading-indicator" id="loadingIndicator">
-              <span class="loading-spinner"></span> Searching addresses...
-            </div>
-            <ul id="addressSuggestions"></ul>
-          </div>
-          <div class="instructions">
-            <small><i class="fas fa-info-circle"></i> Start typing to see address suggestions. Minimum 3 characters required.</small>
-          </div>
-        </div>
+<div class="form-group">
+  <label for="propertyDetails" class="required">Property Details</label>
+  <div class="suggestions-container">
+    <textarea id="propertyDetails" name="propertyDetails" rows="4" required 
+              placeholder="Start typing your address (e.g., Stand 23900 Mohau Street)"></textarea>
+    <div class="loading-indicator" id="loadingIndicator">
+      <span class="loading-spinner"></span> Searching addresses...
+    </div>
+    <ul id="addressSuggestions"></ul>
+  </div>
+  <div class="instructions">
+    <small><i class="fas fa-info-circle"></i> Start typing to see suggestions or</small>
+    <span class="manual-toggle" onclick="enableManualEntry()">enter address manually</span>
+  </div>
+</div>
         
         <div class="form-group">
           <label for="competentPerson" class="required">Competent Person Name</label>
@@ -1124,33 +1182,37 @@
     <div id="formMessage"></div>
   </div>
 
-  <!-- Success Screen -->
-  <div class="success-screen" id="successScreen">
-    <div class="success-content">
-      <div class="success-icon">
-        <i class="fas fa-check"></i>
-      </div>
-      <h2 class="success-title">Submission Successful!</h2>
-      <p class="success-message">Thank you for completing the Home Builder Submission Form. Your information has been successfully submitted to the NHBRC.</p>
-      
-      <div class="success-details">
-        <div class="success-detail">
-          <span class="detail-label">Reference ID:</span>
-          <span class="detail-value" id="successRefId"></span>
-        </div>
-        <div class="success-detail">
-          <span class="detail-label">Submitted on:</span>
-          <span class="detail-value" id="successDate"></span>
-        </div>
-      </div>
-      
-      <p class="countdown">This screen will close in <span class="countdown-number" id="countdown">5</span> seconds</p>
-      
-      <button class="btn btn-primary" onclick="closeSuccessScreen()">
-        <i class="fas fa-times"></i> Close Now
-      </button>
+<!-- Success Screen -->
+<div class="success-screen" id="successScreen">
+  <div class="success-content">
+    <div class="success-icon">
+      <i class="fas fa-check"></i>
     </div>
+    <h2 class="success-title">Submission Successful!</h2>
+    <p class="success-message" id="successMessage">Thank you for completing the Home Builder Submission Form. Your information has been successfully submitted to the NHBRC.</p>
+    
+    <div class="success-details">
+      <div class="success-detail">
+        <span class="detail-label">Reference ID:</span>
+        <span class="detail-value" id="successRefId"></span>
+      </div>
+      <div class="success-detail">
+        <span class="detail-label">Province:</span>
+        <span class="detail-value" id="successProvince"></span>
+      </div>
+      <div class="success-detail">
+        <span class="detail-label">Submitted on:</span>
+        <span class="detail-value" id="successDate"></span>
+      </div>
+    </div>
+    
+    <p class="countdown">This screen will close in <span class="countdown-number" id="countdown">5</span> seconds</p>
+    
+    <button class="btn btn-primary" onclick="closeSuccessScreen()">
+      <i class="fas fa-times"></i> Close Now
+    </button>
   </div>
+</div>
 
   <script>
     let currentStep = 1;
@@ -1183,28 +1245,43 @@
       setupAddressAutocomplete();
     });
 
-    function generateReferenceNumber() {
-      // Get the last used number from localStorage or start from 10000
-      let lastNumber = localStorage.getItem("lastRefNum");
-      
-      if (!lastNumber) {
-        // First time use, start from 10000
-        lastNumber = 10000;
-      } else {
-        // Increment from the last used number
-        lastNumber = parseInt(lastNumber);
-      }
-      
-      // Generate new reference number
-      const newNumber = lastNumber + 1;
-      const referenceNumber = "NHBRC" + newNumber;
-      
-      // Store the new number for next time
-      localStorage.setItem("lastRefNum", newNumber);
-      
-      return referenceNumber;
+// Replace the generateReferenceNumber function
+async function generateReferenceNumber() {
+  try {
+    const response = await fetch('/api/generate-reference');
+    if (!response.ok) {
+      throw new Error('Failed to generate reference number');
     }
+    const data = await response.json();
+    return data.referenceNumber;
+  } catch (error) {
+    console.error('Error generating reference number:', error);
+    // Fallback: use timestamp-based ID
+    return `NHBRC${Date.now()}`;
+  }
+}
 
+// Update your form initialization
+document.addEventListener('DOMContentLoaded', async function() {
+  try {
+    // Generate a new reference number from the server
+    const referenceNumber = await generateReferenceNumber();
+    document.getElementById('referenceNumber').value = referenceNumber;
+    currentReferenceNumber = referenceNumber;
+    sessionStorage.setItem('currentReferenceNumber', referenceNumber);
+  } catch (error) {
+    console.error('Failed to generate reference number:', error);
+    // Fallback to client-side generation
+    currentReferenceNumber = `NHBRC${Math.floor(10000 + Math.random() * 90000)}`;
+    document.getElementById('referenceNumber').value = currentReferenceNumber;
+    sessionStorage.setItem('currentReferenceNumber', currentReferenceNumber);
+  }
+  
+  showStep(currentStep);
+  updateProgressBar();
+  setupFileUpload();
+  setupAddressAutocomplete();
+});
 
 function setupAddressAutocomplete() {
   const propertyInput = document.getElementById('propertyDetails');
@@ -1230,18 +1307,88 @@ function setupAddressAutocomplete() {
     }
   }
 
-  // Format address suggestion for readability
-  function formatAddressSuggestion(result) {
+  // Enhanced address formatter for South African addresses
+function formatAddressSuggestion(result) {
     const addr = result.address;
-    const street = addr.road || addr.pedestrian || addr.cycleway || '';
-    const suburb = addr.suburb || addr.neighbourhood || addr.village || '';
-    const city = addr.city || addr.town || addr.village || '';
+    
+    // Extract specific components
+    const houseNumber = addr.house_number || addr.housenumber || '';
+    const standNumber = addr.stand_number || '';
+    const street = addr.road || addr.street || '';
+    const suburb = addr.suburb || addr.neighbourhood || '';
+    const city = addr.city || addr.town || '';
+    const ward = addr.city_district || '';
     const postcode = addr.postcode || '';
-    const country = addr.country || '';
+    const province = addr.state || '';
+    const country = addr.country || 'South Africa';
 
-    const formatted = [street, suburb, city, postcode].filter(Boolean).join(', ');
-    return formatted ? `${formatted}, ${country}` : result.display_name;
-  }
+    // Build address in exact format: Number Street, Suburb, City Ward, Postcode, Province, Country
+    const addressParts = [];
+    
+    // Number + Street
+    let streetPart = '';
+    if (standNumber) {
+        streetPart = `Stand ${standNumber} ${street}`;
+    } else if (houseNumber) {
+        streetPart = `${houseNumber} ${street}`;
+    } else if (street) {
+        streetPart = street;
+    }
+    
+    if (streetPart) {
+        addressParts.push(streetPart);
+    }
+    
+    // Suburb (lowercase)
+    if (suburb) {
+        addressParts.push(suburb.toLowerCase());
+    }
+    
+    // City + Ward
+    let cityPart = '';
+    if (city && ward) {
+        cityPart = `${city} ${ward}`;
+    } else if (city) {
+        cityPart = city;
+    } else if (ward) {
+        cityPart = ward;
+    }
+    
+    if (cityPart) {
+        addressParts.push(cityPart);
+    }
+    
+    // Postal Code
+    if (postcode) {
+        addressParts.push(postcode);
+    }
+    
+    // Province
+    if (province) {
+        addressParts.push(province);
+    }
+    
+    // Country
+    addressParts.push(country);
+
+    // Join all parts
+    let formatted = addressParts.join(', ');
+    
+    // Capitalize properly (except suburbs)
+    formatted = formatted
+        .split(', ')
+        .map((part, index) => {
+            // Keep suburbs lowercase (second position)
+            if (index === 1 && suburb) {
+                return part.toLowerCase();
+            }
+            // Capitalize other parts
+            return part.replace(/\b\w/g, char => char.toUpperCase());
+        })
+        .join(', ');
+
+    return formatted;
+}
 
   // Handle input with debounce
   propertyInput.addEventListener('input', () => {
@@ -1258,17 +1405,48 @@ function setupAddressAutocomplete() {
       try {
         const results = await fetchAddressSuggestions(query);
         if (results.length === 0) {
-          suggestionsList.innerHTML = '<li class="error"><i class="fas fa-exclamation-circle suggestion-icon"></i> No addresses found</li>';
+          suggestionsList.innerHTML = `
+            <li class="no-results">
+              <i class="fas fa-search suggestion-icon"></i>
+              <div>
+                <div>No addresses found</div>
+                <small>You can manually type your full address</small>
+              </div>
+            </li>
+            <li class="manual-entry" onclick="enableManualEntry()">
+              <i class="fas fa-edit suggestion-icon"></i>
+              <div>
+                <div>Enter address manually</div>
+                <small>Click to type your complete address</small>
+              </div>
+            </li>
+          `;
         } else {
           suggestionsList.innerHTML = results.map(result =>
-            `<li data-value="${result.display_name}">
-              <i class="fas fa-map-marker-alt suggestion-icon"></i>${formatAddressSuggestion(result)}
+            `<li data-value="${formatAddressSuggestion(result)}">
+              <i class="fas fa-map-marker-alt suggestion-icon"></i>
+              <div>${formatAddressSuggestion(result)}</div>
             </li>`
           ).join('');
         }
         suggestionsList.classList.add('active');
       } catch (err) {
-        suggestionsList.innerHTML = '<li class="error"><i class="fas fa-exclamation-triangle suggestion-icon"></i> Error loading addresses</li>';
+        suggestionsList.innerHTML = `
+          <li class="error">
+            <i class="fas fa-exclamation-triangle suggestion-icon"></i>
+            <div>
+              <div>Error loading addresses</div>
+              <small>You can manually type your address below</small>
+            </div>
+          </li>
+          <li class="manual-entry" onclick="enableManualEntry()">
+            <i class="fas fa-edit suggestion-icon"></i>
+            <div>
+              <div>Enter address manually</div>
+              <small>Click to type your complete address</small>
+            </div>
+          </li>
+        `;
         suggestionsList.classList.add('active');
       }
     }, 500);
@@ -1277,12 +1455,26 @@ function setupAddressAutocomplete() {
   // Click suggestion to fill textarea
   suggestionsList.addEventListener('click', (e) => {
     const li = e.target.closest('li');
-    if (!li) return;
+    if (!li || li.classList.contains('error') || li.classList.contains('no-results')) return;
+    
+    if (li.classList.contains('manual-entry')) {
+      enableManualEntry();
+      return;
+    }
+    
     propertyInput.value = li.dataset.value;
     suggestionsList.innerHTML = '';
     suggestionsList.classList.remove('active');
     updateReviewSection();
   });
+
+  // Function to enable manual entry
+  window.enableManualEntry = function() {
+    suggestionsList.innerHTML = '';
+    suggestionsList.classList.remove('active');
+    propertyInput.focus();
+    propertyInput.placeholder = "Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)";
+  };
 
   // Close suggestions if clicked outside
   document.addEventListener('click', (e) => {
@@ -1294,7 +1486,7 @@ function setupAddressAutocomplete() {
   // Keyboard navigation for suggestions
   propertyInput.addEventListener('keydown', (e) => {
     if (!suggestionsList.classList.contains('active')) return;
-    const suggestions = Array.from(suggestionsList.querySelectorAll('li:not(.loading):not(.error)'));
+    const suggestions = Array.from(suggestionsList.querySelectorAll('li:not(.error):not(.no-results):not(.manual-entry)'));
     if (!suggestions.length) return;
     const currentFocus = suggestionsList.querySelector('li.highlighted');
     let index = currentFocus ? suggestions.indexOf(currentFocus) : -1;
@@ -1325,6 +1517,13 @@ function setupAddressAutocomplete() {
   propertyInput.addEventListener('focus', () => {
     if (propertyInput.value.trim().length >= 3 && suggestionsList.children.length > 0) {
       suggestionsList.classList.add('active');
+    }
+  });
+
+  // Allow manual typing even when suggestions are shown
+  propertyInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !suggestionsList.classList.contains('active')) {
+      e.preventDefault(); // Prevent form submission
     }
   });
 }
@@ -1420,35 +1619,41 @@ function setupAddressAutocomplete() {
     }
 
     // Show the success screen
-    function showSuccessScreen() {
-      const successScreen = document.getElementById('successScreen');
-      const successRefId = document.getElementById('successRefId');
-      const successDate = document.getElementById('successDate');
-      const countdownElement = document.getElementById('countdown');
-      
-      // Set reference ID
-      successRefId.textContent = currentReferenceNumber;
-      
-      // Set current date
-      successDate.textContent = new Date().toLocaleString();
-      
-      // Show the success screen
-      successScreen.classList.add('active');
-      
-      // Start countdown
-      countdownValue = 5;
-      countdownElement.textContent = countdownValue;
-      
-      clearInterval(countdownInterval);
-      countdownInterval = setInterval(() => {
-        countdownValue--;
-        countdownElement.textContent = countdownValue;
-        
-        if (countdownValue <= 0) {
-          closeSuccessScreen();
-        }
-      }, 1000);
+// Show the success screen
+function showSuccessScreen() {
+  const successScreen = document.getElementById('successScreen');
+  const successRefId = document.getElementById('successRefId');
+  const successProvince = document.getElementById('successProvince');
+  const successDate = document.getElementById('successDate');
+  const countdownElement = document.getElementById('countdown');
+  const province = document.getElementById('province').value;
+  
+  // Set reference ID
+  successRefId.textContent = currentReferenceNumber;
+  
+  // Set province
+  successProvince.textContent = province;
+  
+  // Set current date
+  successDate.textContent = new Date().toLocaleString();
+  
+  // Show the success screen
+  successScreen.classList.add('active');
+  
+  // Start countdown
+  countdownValue = 5;
+  countdownElement.textContent = countdownValue;
+  
+  clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    countdownValue--;
+    countdownElement.textContent = countdownValue;
+    
+    if (countdownValue <= 0) {
+      closeSuccessScreen();
     }
+  }, 1000);
+}
     
     // Close the success screen
     function closeSuccessScreen() {
@@ -1686,96 +1891,115 @@ function setupAddressAutocomplete() {
       }, 60000);
     }
 
-    document.getElementById('homeBuilderForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
+document.getElementById('homeBuilderForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
 
-      const form = e.target;
-      const formMessage = document.getElementById('formMessage');
-      const submitBtn = document.getElementById('submitBtn');
+  const form = e.target;
+  const formMessage = document.getElementById('formMessage');
+  const submitBtn = document.getElementById('submitBtn');
+  const province = document.getElementById('province').value;
 
-      // Validate all steps before submission
-      for (let step = 1; step <= 3; step++) {
-        if (!validateStep(step)) {
-          showMessage('Please complete all required fields correctly', 'error');
-          return;
-        }
+  // Validate all steps before submission
+  for (let step = 1; step <= 3; step++) {
+    if (!validateStep(step)) {
+      showMessage('Please complete all required fields correctly', 'error');
+      return;
+    }
+  }
+
+  // Disable button to prevent double clicks
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+
+  // Create FormData to send files + fields
+  const formData = new FormData();
+  
+  // Add form fields
+  formData.append('referenceNumber', currentReferenceNumber);
+  formData.append('province', province);
+  formData.append('builderName', document.getElementById('builderName').value);
+  formData.append('companyName', document.getElementById('companyName').value);
+  formData.append('registrationNumber', document.getElementById('registrationNumber').value);
+  formData.append('propertyDetails', document.getElementById('propertyDetails').value);
+  formData.append('competentPerson', document.getElementById('competentPerson').value);
+  
+  // Append all uploaded files
+  uploadedFiles.forEach((file, index) => {
+    formData.append(`fileUpload[${index}]`, file);
+  });
+
+  formMessage.style.display = 'none';
+  formMessage.textContent = '';
+  formMessage.className = '';
+
+  try {
+  const response = await fetch('/api/submit-form', {
+    method: 'POST',
+    body: formData
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.error || `Server returned ${response.status}`);
+  }
+  
+  if (data.success) {
+    // Mark form as submitted
+    formSubmitted = true;
+    
+    // Use the reference number from the server response
+    currentReferenceNumber = data.referenceNumber;
+    
+    // Update success screen with the server-generated reference number
+    document.getElementById('successRefId').textContent = data.referenceNumber;
+    
+    // Update success message with province info
+    const province = document.getElementById('province').value;
+    const successMessage = document.querySelector('.success-message');
+    successMessage.textContent = `Thank you for completing the Home Builder Submission Form. Your information has been successfully submitted to the NHBRC ${province} office.`;
+    
+    // Show the success screen
+    showSuccessScreen();
+    
+    // Reset form after successful submission
+    form.reset();
+    uploadedFiles = [];
+    document.getElementById('fileList').innerHTML = '';
+    currentStep = 1;
+    showStep(currentStep);
+    
+    // Generate a new reference number for the next submission
+    try {
+      const refResponse = await fetch('/api/generate-reference');
+      if (refResponse.ok) {
+        const refData = await refResponse.json();
+        currentReferenceNumber = refData.referenceNumber;
+      } else {
+        // Fallback: use timestamp-based ID if server fails
+        currentReferenceNumber = `NHBRC${Date.now()}`;
       }
-
-      // Disable button to prevent double clicks
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
-
-      // Create FormData to send files + fields
-      const formData = new FormData();
-      
-      // Add form fields
-      formData.append('referenceNumber', currentReferenceNumber);
-      formData.append('province', document.getElementById('province').value);
-      formData.append('builderName', document.getElementById('builderName').value);
-      formData.append('companyName', document.getElementById('companyName').value);
-      formData.append('registrationNumber', document.getElementById('registrationNumber').value);
-      formData.append('propertyDetails', document.getElementById('propertyDetails').value);
-      formData.append('competentPerson', document.getElementById('competentPerson').value);
-      
-      // Append all uploaded files
-      uploadedFiles.forEach((file, index) => {
-        formData.append(`fileUpload[${index}]`, file);
-      });
-
-      formMessage.style.display = 'none';
-      formMessage.textContent = '';
-      formMessage.className = '';
-
-      try {
-        // This would be your actual API endpoint
-        const response = await fetch('/api/submit-form', {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-          // Handle server errors (4xx, 5xx)
-          throw new Error(data.error || `Server returned ${response.status}`);
-        }
-        
-        if (data.success) {
-          // Mark form as submitted
-          formSubmitted = true;
-          
-          // Update localStorage with the used reference number
-          const refNumber = parseInt(currentReferenceNumber.replace('NHBRC', ''));
-          localStorage.setItem("lastRefNum", refNumber);
-          
-          // Clear the session storage
-          sessionStorage.removeItem('currentReferenceNumber');
-          
-          // Show the success screen instead of just a message
-          showSuccessScreen();
-          
-          // Reset form after successful submission
-          form.reset();
-          uploadedFiles = [];
-          document.getElementById('fileList').innerHTML = '';
-          currentStep = 1;
-          showStep(currentStep);
-          
-          // Generate a new reference number for the next submission
-          currentReferenceNumber = generateReferenceNumber();
-          sessionStorage.setItem('currentReferenceNumber', currentReferenceNumber);
-          document.getElementById('referenceNumber').value = currentReferenceNumber;
-        } else {
-          showMessage('Error: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (err) {
-        console.error('Submission error:', err);
-        showMessage('An error occurred while submitting. Please try again. ' + err.message, 'error');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Form';
-      }
-    });
+    } catch (refError) {
+      console.error('Error generating new reference:', refError);
+      // Fallback: use timestamp-based ID
+      currentReferenceNumber = `NHBRC${Date.now()}`;
+    }
+    
+    // Store for next submission and update UI
+    sessionStorage.setItem('currentReferenceNumber', currentReferenceNumber);
+    document.getElementById('referenceNumber').value = currentReferenceNumber;
+    
+  } else {
+    showMessage('Error: ' + (data.error || 'Unknown error'), 'error');
+  }
+} catch (err) {
+  console.error('Submission error:', err);
+  showMessage('An error occurred while submitting. Please try again. ' + err.message, 'error');
+} finally {
+  submitBtn.disabled = false;
+  submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Form';
+}
+});
   </script>
   
 </body>

@@ -4,13 +4,22 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 // ES module fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const counterFile = path.join(__dirname, 'counter.json');
 
 // SharePoint functions
-import { saveToSharePoint, uploadFileToSharePoint, getSiteId } from './services/sharepoint.js';
+import { 
+  saveToSharePoint, 
+  uploadFileToSharePoint, 
+  getSiteId, 
+  getSharePointConfig,
+  processFileUploads,
+  testSiteAccess
+} from './services/sharepoint.js';
 import getGraphClient from './config/auth.js';
 
 dotenv.config();
@@ -18,12 +27,11 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configure multer to handle array field names
+// Configure multer
 const upload = multer({ 
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit per file
+    fileSize: 10 * 1024 * 1024,
   },
-  // Allow any field name that starts with "fileUpload"
   fileFilter: (req, file, cb) => {
     if (file.fieldname.startsWith('fileUpload')) {
       cb(null, true);
@@ -52,18 +60,49 @@ const frontendPath = path.join(__dirname, 'public');
 console.log(`📁 Serving frontend from: ${frontendPath}`);
 app.use(express.static(frontendPath));
 
-// Health check with SharePoint connectivity test
+// Initialize or read counter
+function initializeCounter() {
+  try {
+    if (fs.existsSync(counterFile)) {
+      const data = fs.readFileSync(counterFile, 'utf8');
+      const counter = JSON.parse(data);
+      return counter.lastReferenceNumber || 10000;
+    }
+  } catch (error) {
+    console.error('Error reading counter file:', error);
+  }
+  return 10000;
+}
+
+function saveCounter(value) {
+  try {
+    fs.writeFileSync(counterFile, JSON.stringify({ lastReferenceNumber: value }, null, 2));
+  } catch (error) {
+    console.error('Error saving counter:', error);
+  }
+}
+
+let lastReferenceNumber = initializeCounter();
+
+// API endpoint to generate reference numbers
+app.get('/api/generate-reference', (req, res) => {
+  lastReferenceNumber++;
+  saveCounter(lastReferenceNumber);
+  const referenceNumber = `NHBRC${lastReferenceNumber}`;
+  res.json({ referenceNumber });
+});
+
+// Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
     let sharepointStatus = 'Not configured';
-    let siteInfo = {};
     
     if (process.env.SHAREPOINT_CLIENT_ID && process.env.SHAREPOINT_CLIENT_SECRET) {
       try {
         const client = await getGraphClient();
-        const siteId = await getSiteId(client);
+        // Test with Gauteng as default
+        const siteId = await getSiteId(client, 'Gauteng');
         sharepointStatus = `Connected to SharePoint`;
-        siteInfo = { siteId };
       } catch (error) {
         sharepointStatus = `SharePoint connection failed: ${error.message}`;
       }
@@ -73,7 +112,6 @@ app.get('/api/health', async (req, res) => {
       status: 'Backend is running...',
       frontendPath,
       sharepointStatus,
-      siteInfo,
       mode: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString()
     });
@@ -85,59 +123,49 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Form submission - use .any() to accept any field name
+// Form submission endpoint - UPDATED
 app.post('/api/submit-form', upload.any(), async (req, res) => {
-  console.log('Form submission received:', req.body);
-  console.log('Files received:', req.files ? req.files.map(f => `${f.fieldname}: ${f.originalname}`) : 'No files');
-  
-  // Check if SharePoint is configured
-  if (!process.env.SHAREPOINT_CLIENT_ID || !process.env.SHAREPOINT_CLIENT_SECRET) {
-    return res.status(500).json({
-      success: false,
-      error: 'SharePoint not configured',
-      details: 'Missing SharePoint credentials in environment variables'
-    });
-  }
-
   try {
-    const client = await getGraphClient();
-    const siteId = await getSiteId(client);
-    console.log(`Using site ID: ${siteId}`);
-
-    const uploadedFileUrls = [];
-    const builderName = req.body.builderName || 'unknown';
-    const referenceNumber = req.body.referenceNumber || 'no_ref';
-
-    // Handle uploaded files
-    if (req.files && req.files.length > 0) {
-      console.log(`Processing ${req.files.length} files`);
-      
-      for (const file of req.files) {
-        try {
-          console.log(`Uploading file: ${file.originalname}, size: ${file.size} bytes`);
-          const ext = path.extname(file.originalname);
-          const sanitizedName = builderName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-          const newFileName = `${sanitizedName}_${referenceNumber}${ext}`;
-          const fileUrl = await uploadFileToSharePoint(file.buffer, newFileName, client, siteId, 'Shared Documents');
-          uploadedFileUrls.push(fileUrl);
-          console.log(`Successfully uploaded: ${newFileName}`);
-        } catch (fileError) {
-          console.error(`Failed to upload file ${file.originalname}:`, fileError);
-          // Continue with other files even if one fails
-        }
-      }
-    } else {
-      console.log('No files to upload');
+    const province = req.body.province;
+    if (!province) {
+      return res.status(400).json({
+        success: false,
+        error: 'Province is required'
+      });
     }
 
-    const savedItem = await saveToSharePoint({ ...req.body, uploadedFileUrls }, client, siteId);
-    console.log(`Successfully created list item with ID: ${savedItem.id}`);
+    // Generate reference number for this submission
+    lastReferenceNumber++;
+    saveCounter(lastReferenceNumber);
+    const referenceNumber = `NHBRC${lastReferenceNumber}`;
+
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client, province);
+    console.log(`Using site ID: ${siteId} for province: ${province}`);
+
+    // Process file uploads with new folder structure and limits
+    const uploadedFileUrls = await processFileUploads(
+      req.files || [], 
+      { ...req.body, referenceNumber },
+      client, 
+      province
+    );
+
+    const savedItem = await saveToSharePoint({ 
+      ...req.body, 
+      referenceNumber,
+      uploadedFileUrls 
+    }, client, province);
+    
+    console.log(`Successfully created list item with ID: ${savedItem.id} in province: ${province}`);
 
     res.json({
       success: true,
-      message: 'Form submitted successfully',
+      message: `Form submitted successfully to ${province}`,
+      referenceNumber: referenceNumber,
       itemId: savedItem.id,
-      uploadedFileUrls
+      uploadedFileUrls,
+      province: province
     });
 
   } catch (err) {
@@ -146,6 +174,73 @@ app.post('/api/submit-form', upload.any(), async (req, res) => {
       success: false,
       error: err.message,
       details: 'Failed to process form submission to SharePoint'
+    });
+  }
+});
+
+// Test site access endpoint
+app.get('/api/test-site-access', async (req, res) => {
+  try {
+    const province = req.query.province || 'Gauteng';
+    const client = await getGraphClient();
+    
+    console.log(`Testing site access for: ${province}`);
+    const site = await testSiteAccess(client, province);
+    
+    res.json({
+      success: true,
+      province: province,
+      site: {
+        id: site.id,
+        webUrl: site.webUrl,
+        displayName: site.displayName
+      }
+    });
+  } catch (error) {
+    console.error('Site access test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      province: req.query.province || 'Gauteng'
+    });
+  }
+});
+
+// Debug endpoint to check available lists
+app.get('/api/debug-lists', async (req, res) => {
+  try {
+    const province = req.query.province || 'Free State';
+    const client = await getGraphClient();
+    const siteId = await getSiteId(client, province);
+
+    console.log(`🔍 Checking lists for province: ${province}`);
+    console.log(`🔍 Site ID: ${siteId}`);
+
+    const lists = await client.api(`/sites/${siteId}/lists`).get();
+    
+    console.log(`📋 Available lists in ${province}:`);
+    lists.value.forEach(list => {
+      console.log(`   - "${list.displayName}" (internal name: "${list.name}")`);
+    });
+
+    res.json({
+      success: true,
+      province: province,
+      siteId: siteId,
+      lists: lists.value.map(list => ({
+        id: list.id,
+        name: list.name,
+        displayName: list.displayName,
+        webUrl: list.webUrl,
+        createdDateTime: list.createdDateTime
+      }))
+    });
+  } catch (error) {
+    console.error('❌ List debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      province: req.query.province
     });
   }
 });
@@ -168,7 +263,8 @@ app.post('/api/test-submit', upload.any(), async (req, res) => {
       success: true,
       message: 'Form submitted successfully (test mode)',
       itemId: Math.floor(Math.random() * 10000),
-      uploadedFiles: req.files ? req.files.map(f => f.originalname) : []
+      uploadedFiles: req.files ? req.files.map(f => f.originalname) : [],
+      province: req.body.province || 'Test Province'
     });
 
   } catch (err) {
@@ -190,7 +286,6 @@ app.get('*', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   
-  // Handle Multer errors specifically
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({
@@ -212,11 +307,21 @@ app.listen(port, () => {
   // Log SharePoint configuration status
   if (process.env.SHAREPOINT_CLIENT_ID && process.env.SHAREPOINT_CLIENT_SECRET) {
     console.log(`🔐 SharePoint authentication configured`);
-    if (process.env.SHAREPOINT_SITE_URL) {
-      console.log(`🌐 SharePoint site: ${process.env.SHAREPOINT_SITE_URL}`);
-    } else {
-      console.log(`⚠️  SHAREPOINT_SITE_URL not set`);
-    }
+    
+    // Test province configurations
+    const provinces = [
+      'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu Natal', 
+      'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'
+    ];
+    
+    provinces.forEach(province => {
+      try {
+        const config = getSharePointConfig(province);
+        console.log(`✅ ${province}: ${config.siteUrl} -> ${config.listName}`);
+      } catch (error) {
+        console.log(`❌ ${province}: Configuration error - ${error.message}`);
+      }
+    });
   } else {
     console.log(`⚠️  SharePoint authentication not configured - check environment variables`);
   }
