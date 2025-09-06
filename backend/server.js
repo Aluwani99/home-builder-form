@@ -5,62 +5,42 @@ import cors from 'cors';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-
-// ES module fix for __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const counterFile = path.join(__dirname, 'counter.json');
-
-// SharePoint functions
-import { 
-  saveToSharePoint, 
-  uploadFileToSharePoint, 
-  getSiteId, 
+import {
+  saveToSharePoint,
+  uploadFileToSharePoint,
+  getSiteId,
   getSharePointConfig,
   processFileUploads,
   testSiteAccess
 } from './services/sharepoint.js';
 import getGraphClient from './config/auth.js';
 
+// ✅ ESM fix for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables
 dotenv.config();
 
+// Create app
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configure multer
-const upload = multer({ 
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.fieldname.startsWith('fileUpload')) {
-      cb(null, true);
-    } else {
-      cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname), false);
-    }
-  }
+// ------------------
+// Safety / Debugging
+// ------------------
+process.on('uncaughtException', (err) => {
+  console.error('🚨 Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('🚨 Unhandled Rejection:', err);
 });
 
-// CORS Middleware
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// ------------------
+// Counter file setup
+// ------------------
+const counterFile = path.join(process.cwd(), 'counter.json');
 
-// Handle preflight requests
-app.options('*', cors());
-
-// Other middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Frontend path
-const frontendPath = path.join(__dirname, 'public');
-console.log(`📁 Serving frontend from: ${frontendPath}`);
-app.use(express.static(frontendPath));
-
-// Initialize or read counter
 function initializeCounter() {
   try {
     if (fs.existsSync(counterFile)) {
@@ -68,8 +48,8 @@ function initializeCounter() {
       const counter = JSON.parse(data);
       return counter.lastReferenceNumber || 10000;
     }
-  } catch (error) {
-    console.error('Error reading counter file:', error);
+  } catch (err) {
+    console.error('Error reading counter file:', err);
   }
   return 10000;
 }
@@ -77,260 +57,158 @@ function initializeCounter() {
 function saveCounter(value) {
   try {
     fs.writeFileSync(counterFile, JSON.stringify({ lastReferenceNumber: value }, null, 2));
-  } catch (error) {
-    console.error('Error saving counter:', error);
+  } catch (err) {
+    console.error('Error saving counter:', err);
   }
 }
 
 let lastReferenceNumber = initializeCounter();
 
-// API endpoint to generate reference numbers
-app.get('/api/generate-reference', (req, res) => {
-  lastReferenceNumber++;
-  saveCounter(lastReferenceNumber);
-  const referenceNumber = `NHBRC${lastReferenceNumber}`;
-  res.json({ referenceNumber });
+// ------------------
+// Middleware
+// ------------------
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+app.options('*', cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve frontend
+const frontendPath = path.join(__dirname, 'public');
+app.use(express.static(frontendPath));
+
+// Multer setup
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname.startsWith('fileUpload')) cb(null, true);
+    else cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname), false);
+  }
 });
 
-// Health check endpoint
+// ------------------
+// Health check
+// ------------------
 app.get('/api/health', async (req, res) => {
   try {
     let sharepointStatus = 'Not configured';
-    
     if (process.env.SHAREPOINT_CLIENT_ID && process.env.SHAREPOINT_CLIENT_SECRET) {
       try {
         const client = await getGraphClient();
-        // Test with Gauteng as default
-        const siteId = await getSiteId(client, 'Gauteng');
-        sharepointStatus = `Connected to SharePoint`;
-      } catch (error) {
-        sharepointStatus = `SharePoint connection failed: ${error.message}`;
+        await getSiteId(client, 'Gauteng'); // test default province
+        sharepointStatus = 'Connected to SharePoint';
+      } catch (err) {
+        sharepointStatus = `SharePoint connection failed: ${err.message}`;
       }
     }
-
     res.json({
-      status: 'Backend is running...',
+      status: 'Backend is running',
       frontendPath,
       sharepointStatus,
       mode: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    res.status(500).json({
-      status: 'Error',
-      error: error.message
-    });
+  } catch (err) {
+    console.error('Health check error:', err);
+    res.status(500).json({ status: 'Error', error: err.message });
   }
 });
 
-// Form submission endpoint - UPDATED
+// ------------------
+// Reference generator
+// ------------------
+app.get('/api/generate-reference', (req, res) => {
+  lastReferenceNumber++;
+  saveCounter(lastReferenceNumber);
+  res.json({ referenceNumber: `NHBRC${lastReferenceNumber}` });
+});
+
+// ------------------
+// Form submission
+// ------------------
 app.post('/api/submit-form', upload.any(), async (req, res) => {
   try {
     const province = req.body.province;
-    if (!province) {
-      return res.status(400).json({
-        success: false,
-        error: 'Province is required'
-      });
-    }
+    if (!province) return res.status(400).json({ success: false, error: 'Province is required' });
 
-    // Generate reference number for this submission
     lastReferenceNumber++;
     saveCounter(lastReferenceNumber);
     const referenceNumber = `NHBRC${lastReferenceNumber}`;
 
     const client = await getGraphClient();
     const siteId = await getSiteId(client, province);
+
     console.log(`Using site ID: ${siteId} for province: ${province}`);
 
-    // Process file uploads with new folder structure and limits
-    const uploadedFileUrls = await processFileUploads(
-      req.files || [], 
-      { ...req.body, referenceNumber },
-      client, 
-      province
-    );
+    const uploadedFileUrls = await processFileUploads(req.files || [], { ...req.body, referenceNumber }, client, province);
 
-    const savedItem = await saveToSharePoint({ 
-      ...req.body, 
-      referenceNumber,
-      uploadedFileUrls 
-    }, client, province);
-    
-    console.log(`Successfully created list item with ID: ${savedItem.id} in province: ${province}`);
+    const savedItem = await saveToSharePoint({ ...req.body, referenceNumber, uploadedFileUrls }, client, province);
+
+    console.log(`Form submitted successfully: Item ID ${savedItem.id}`);
 
     res.json({
       success: true,
       message: `Form submitted successfully to ${province}`,
-      referenceNumber: referenceNumber,
+      referenceNumber,
       itemId: savedItem.id,
       uploadedFileUrls,
-      province: province
+      province
     });
-
   } catch (err) {
-    console.error('❌ Error processing form:', err);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      details: 'Failed to process form submission to SharePoint'
-    });
+    console.error('Form submission error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Test site access endpoint
+// ------------------
+// Test site access
+// ------------------
 app.get('/api/test-site-access', async (req, res) => {
   try {
     const province = req.query.province || 'Gauteng';
     const client = await getGraphClient();
-    
-    console.log(`Testing site access for: ${province}`);
     const site = await testSiteAccess(client, province);
-    
-    res.json({
-      success: true,
-      province: province,
-      site: {
-        id: site.id,
-        webUrl: site.webUrl,
-        displayName: site.displayName
-      }
-    });
-  } catch (error) {
-    console.error('Site access test failed:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      province: req.query.province || 'Gauteng'
-    });
+    res.json({ success: true, province, site });
+  } catch (err) {
+    console.error('Site access test failed:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Debug endpoint to check available lists
+// ------------------
+// Debug endpoint
+// ------------------
 app.get('/api/debug-lists', async (req, res) => {
   try {
     const province = req.query.province || 'Free State';
     const client = await getGraphClient();
     const siteId = await getSiteId(client, province);
-
-    console.log(`🔍 Checking lists for province: ${province}`);
-    console.log(`🔍 Site ID: ${siteId}`);
-
     const lists = await client.api(`/sites/${siteId}/lists`).get();
-    
-    console.log(`📋 Available lists in ${province}:`);
-    lists.value.forEach(list => {
-      console.log(`   - "${list.displayName}" (internal name: "${list.name}")`);
-    });
-
-    res.json({
-      success: true,
-      province: province,
-      siteId: siteId,
-      lists: lists.value.map(list => ({
-        id: list.id,
-        name: list.name,
-        displayName: list.displayName,
-        webUrl: list.webUrl,
-        createdDateTime: list.createdDateTime
-      }))
-    });
-  } catch (error) {
-    console.error('❌ List debug error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      province: req.query.province
-    });
-  }
-});
-
-// Test endpoint without SharePoint for debugging
-app.post('/api/test-submit', upload.any(), async (req, res) => {
-  try {
-    console.log('Test form submission received:', req.body);
-    
-    // Log files info without processing them
-    if (req.files && req.files.length > 0) {
-      console.log(`Received ${req.files.length} files:`);
-      req.files.forEach(file => {
-        console.log(`- ${file.fieldname}: ${file.originalname} (${file.size} bytes)`);
-      });
-    }
-
-    // Simulate successful submission
-    res.json({
-      success: true,
-      message: 'Form submitted successfully (test mode)',
-      itemId: Math.floor(Math.random() * 10000),
-      uploadedFiles: req.files ? req.files.map(f => f.originalname) : [],
-      province: req.body.province || 'Test Province'
-    });
-
+    res.json({ success: true, province, siteId, lists: lists.value });
   } catch (err) {
-    console.error('❌ Error processing test form:', err);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      details: 'Failed to process test form submission'
-    });
+    console.error('Debug lists error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Serve frontend for all non-API routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
-});
+// ------------------
+// Catch-all to serve frontend
+// ------------------
+app.get('*', (req, res) => res.sendFile(path.join(frontendPath, 'index.html')));
 
+// ------------------
 // Error handling
+// ------------------
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res.status(400).json({
-        success: false,
-        error: `Unexpected file field: ${err.field}. Please check your form field names.`
-      });
-    }
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ success: false, error: `Unexpected file field: ${err.field}` });
   }
-  
   res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
-// ✅ SINGLE server startup (Azure compatible)
-const server = app.listen(port, '0.0.0.0', () => {
+// ------------------
+// Start server
+// ------------------
+app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${port}`);
-  console.log(`🏥 Health check: http://0.0.0.0:${port}/api/health`);
-  
-  // Log SharePoint configuration status
-  if (process.env.SHAREPOINT_CLIENT_ID && process.env.SHAREPOINT_CLIENT_SECRET) {
-    console.log(`🔐 SharePoint authentication configured`);
-    
-    // Test province configurations
-    const provinces = [
-      'Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu Natal', 
-      'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'
-    ];
-    
-    provinces.forEach(province => {
-      try {
-        const config = getSharePointConfig(province);
-        console.log(`✅ ${province}: ${config.siteUrl} -> ${config.listName}`);
-      } catch (error) {
-        console.log(`❌ ${province}: Configuration error - ${error.message}`);
-      }
-    });
-  } else {
-    console.log(`⚠️  SharePoint authentication not configured - check environment variables`);
-  }
-});
-
-// Handle Azure shutdown gracefully
-process.on('SIGINT', () => {
-  console.log('Shutting down gracefully...');
-  server.close(() => {
-    console.log('Server closed.');
-    process.exit(0);
-  });
 });

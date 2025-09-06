@@ -115,52 +115,38 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
-      # 1️⃣5️⃣ Debug application startup using dynamic hostname
-      - name: Debug application startup
+      # 1️⃣5️⃣ Tail logs in real-time for debugging
+      - name: Tail Azure Web App logs
         run: |
-          echo "Checking application status..."
-          sleep 60
+          echo "Tailing logs from Azure Web App..."
+          HOSTNAME=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "defaultHostName" -o tsv)
+          
+          echo "Using hostname: $HOSTNAME"
+          
+          # Start tailing logs for 120s to see startup issues
+          timeout 120 az webapp log tail \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
-          # Get actual hostname from Azure
+      # 1️⃣6️⃣ Optional endpoint test
+      - name: Test endpoints
+        run: |
           HOSTNAME=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "defaultHostName" -o tsv)
 
-          echo "Testing against: https://$HOSTNAME"
-
-          echo "Testing basic connectivity:"
+          echo "Testing endpoints on $HOSTNAME"
           curl -v https://$HOSTNAME/ || echo "Root endpoint failed"
-
-          echo "Testing health endpoint:"
           curl -v https://$HOSTNAME/api/health || echo "Health endpoint failed"
-
-          echo "Testing static files:"
           curl -v https://$HOSTNAME/index.html || echo "Static files not served"
-
-          az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "state"
-
-      # 1️⃣6️⃣ Download logs if needed
-      - name: Get application logs
-        run: |
-          echo "Getting application logs..."
-          az webapp log download \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --log-file app-logs.zip || echo "Log download failed"
-          
-          if [ -f "app-logs.zip" ]; then
-            echo "Log file downloaded, checking contents..."
-            unzip -l app-logs.zip || echo "Cannot list zip contents"
-          fi
 
       # 1️⃣7️⃣ Final status check
       - name: Final status check
         run: |
-          echo "=== FINAL APPLICATION STATUS ==="
           az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
