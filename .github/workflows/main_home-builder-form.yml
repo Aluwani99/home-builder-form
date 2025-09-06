@@ -57,9 +57,6 @@ jobs:
               </handlers>
               <rewrite>
                 <rules>
-                  <rule name="NodeInspector" patternSyntax="ECMAScript" stopProcessing="true">
-                    <match url="^server.js\/debug[\/]?" />
-                  </rule>
                   <rule name="StaticContent">
                     <action type="Rewrite" url="public{REQUEST_URI}"/>
                   </rule>
@@ -71,7 +68,6 @@ jobs:
                   </rule>
                 </rules>
               </rewrite>
-              <iisnode nodeProcessCommandLine="%HOME%\site\deployments\tools\node.exe" />
             </system.webServer>
           </configuration>
           EOF
@@ -88,7 +84,19 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 9️⃣ Set Azure App Settings (env vars)
+      # 9️⃣ Stop the web app before making changes
+      - name: Stop Azure Web App
+        run: |
+          az webapp stop \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+        continue-on-error: true
+
+      # 🔟 Wait a moment after stopping
+      - name: Wait after stopping
+        run: sleep 15
+
+      # 1️⃣1️⃣ Set Azure App Settings (env vars)
       - name: Set Azure App Settings
         run: |
           az webapp config appsettings set \
@@ -110,7 +118,7 @@ jobs:
               SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
               SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
 
-      # 🔟 Set Azure Startup Command
+      # 1️⃣2️⃣ Set Azure Startup Command
       - name: Set Azure Startup Command
         run: |
           az webapp config set \
@@ -118,9 +126,27 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --startup-file "npm start"
 
-      # 1️⃣1️⃣ Deploy to Azure Web App
+      # 1️⃣3️⃣ Wait before deployment
+      - name: Wait before deployment
+        run: sleep 10
+
+      # 1️⃣4️⃣ Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      # 1️⃣5️⃣ Start the web app after deployment
+      - name: Start Azure Web App
+        run: |
+          az webapp start \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+      # 1️⃣6️⃣ Final health check
+      - name: Health check after deployment
+        run: |
+          echo "Waiting for app to start..."
+          sleep 30
+          curl -f https://${{ env.AZURE_WEBAPP_NAME }}-c4dqgkdde6dhhga8.southafricanorth-01.azurewebsites.net/api/health || echo "Health check failed - app may still be starting"
