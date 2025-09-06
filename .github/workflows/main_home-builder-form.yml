@@ -31,24 +31,64 @@ jobs:
         working-directory: backend
         run: npm ci --only=production
 
-      # 4️⃣ Copy frontend to backend/public
+      # 4️⃣ Check server.js for syntax errors
+      - name: Check server.js for errors
+        working-directory: backend
+        run: |
+          node --check server.js
+          echo "✅ server.js syntax is valid"
+
+      # 5️⃣ Copy frontend to backend/public
       - name: Copy frontend files
         run: |
           rm -rf backend/public/*
           cp -r frontend/* backend/public/
 
-      # 5️⃣ Zip backend for deployment
+      # 6️⃣ Create web.config for Azure Linux
+      - name: Create web.config for Azure
+        working-directory: backend
+        run: |
+          cat > web.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <handlers>
+                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
+              </handlers>
+              <rewrite>
+                <rules>
+                  <rule name="NodeInspector" patternSyntax="ECMAScript" stopProcessing="true">
+                    <match url="^server.js\/debug[\/]?" />
+                  </rule>
+                  <rule name="StaticContent">
+                    <action type="Rewrite" url="public{REQUEST_URI}"/>
+                  </rule>
+                  <rule name="DynamicContent">
+                    <conditions>
+                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>
+                    </conditions>
+                    <action type="Rewrite" url="server.js"/>
+                  </rule>
+                </rules>
+              </rewrite>
+              <iisnode nodeProcessCommandLine="%HOME%\site\deployments\tools\node.exe" />
+            </system.webServer>
+          </configuration>
+          EOF
+          echo "✅ Created web.config for Azure"
+
+      # 7️⃣ Zip backend for deployment
       - name: Zip backend
         run: |
           cd backend
           zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
 
-      # 6️⃣ Login to Azure
+      # 8️⃣ Login to Azure
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Set Azure App Settings (env vars)
+      # 9️⃣ Set Azure App Settings (env vars)
       - name: Set Azure App Settings
         run: |
           az webapp config appsettings set \
@@ -70,7 +110,15 @@ jobs:
               SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
               SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
 
-      # 8️⃣ Deploy to Azure Web App
+      # 🔟 Set Azure Startup Command
+      - name: Set Azure Startup Command
+        run: |
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --startup-file "npm start"
+
+      # 1️⃣1️⃣ Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}

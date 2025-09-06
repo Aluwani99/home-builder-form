@@ -298,14 +298,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
-// Start server
-// Start server - OLD CODE (problematic for Azure)
-app.listen(port, () => {
-  console.log(`✅ Server running on http://localhost:${port}`);
-  // ... rest of your code
-});
-
-// Replace with this - NEW CODE (Azure compatible):
+// ✅ SINGLE server startup (Azure compatible)
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${port}`);
   console.log(`🏥 Health check: http://0.0.0.0:${port}/api/health`);
