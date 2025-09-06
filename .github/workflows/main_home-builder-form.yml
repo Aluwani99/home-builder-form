@@ -44,47 +44,18 @@ jobs:
           rm -rf backend/public/*
           cp -r frontend/* backend/public/
 
-      # 6️⃣ Create web.config for Azure Linux
-      - name: Create web.config for Azure
-        working-directory: backend
-        run: |
-          cat > web.config << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <system.webServer>
-              <handlers>
-                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
-              </handlers>
-              <rewrite>
-                <rules>
-                  <rule name="StaticContent">
-                    <action type="Rewrite" url="public{REQUEST_URI}"/>
-                  </rule>
-                  <rule name="DynamicContent">
-                    <conditions>
-                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True"/>
-                    </conditions>
-                    <action type="Rewrite" url="server.js"/>
-                  </rule>
-                </rules>
-              </rewrite>
-            </system.webServer>
-          </configuration>
-          EOF
-          echo "✅ Created web.config for Azure"
-
-      # 7️⃣ Zip backend for deployment
+      # 6️⃣ Zip backend for deployment
       - name: Zip backend
         run: |
           cd backend
           zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
 
-      # 8️⃣ Login to Azure
+      # 7️⃣ Login to Azure
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 9️⃣ Stop the web app before making changes
+      # 8️⃣ Stop the web app before making changes
       - name: Stop Azure Web App
         run: |
           az webapp stop \
@@ -92,11 +63,11 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
         continue-on-error: true
 
-      # 🔟 Wait a moment after stopping
+      # 9️⃣ Wait a moment after stopping
       - name: Wait after stopping
         run: sleep 15
 
-      # 1️⃣1️⃣ Set Azure App Settings (env vars)
+      # 🔟 Set Azure App Settings (env vars)
       - name: Set Azure App Settings
         run: |
           az webapp config appsettings set \
@@ -118,7 +89,7 @@ jobs:
               SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
               SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
 
-      # 1️⃣2️⃣ Set Azure Startup Command
+      # 1️⃣1️⃣ Set Azure Startup Command
       - name: Set Azure Startup Command
         run: |
           az webapp config set \
@@ -126,60 +97,64 @@ jobs:
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --startup-file "npm start"
 
-      # 1️⃣3️⃣ Wait before deployment
+      # 1️⃣2️⃣ Wait before deployment
       - name: Wait before deployment
         run: sleep 10
 
-      # 1️⃣4️⃣ Deploy to Azure Web App
+      # 1️⃣3️⃣ Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
 
-      # 1️⃣5️⃣ Start the web app after deployment
+      # 1️⃣4️⃣ Start the web app after deployment
       - name: Start Azure Web App
         run: |
           az webapp start \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
-      # 1️⃣6️⃣ Replace the health check step with this more detailed debugging:
+      # 1️⃣5️⃣ Debug application startup
       - name: Debug application startup
         run: |
           echo "Checking application status..."
-          sleep 60  # Wait longer for app to start
+          sleep 60
           
-          # Try multiple endpoints to see what's working
           echo "Testing basic connectivity:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}-c4dqgkdde6dhhga8.southafricanorth-01.azurewebsites.net/ || echo "Root endpoint failed"
+          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/ || echo "Root endpoint failed"
           
           echo "Testing health endpoint:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}-c4dqgkdde6dhhga8.southafricanorth-01.azurewebsites.net/api/health || echo "Health endpoint failed"
+          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health || echo "Health endpoint failed"
           
-          echo "Testing if static files are served:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}-c4dqgkdde6dhhga8.southafricanorth-01.azurewebsites.net/index.html || echo "Static files not served"
+          echo "Testing static files:"
+          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/index.html || echo "Static files not served"
           
-          # Check app status
-          az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "state"
+          az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "state"
 
-      # 1️⃣7️⃣ Additional debugging - get recent logs
+      # 1️⃣6️⃣ Download logs if needed
       - name: Get application logs
         run: |
           echo "Getting application logs..."
-          az webapp log download --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --log-file app-logs.zip || echo "Log download failed"
+          az webapp log download \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --log-file app-logs.zip || echo "Log download failed"
           
-          # If download succeeds, try to see what's in there
           if [ -f "app-logs.zip" ]; then
             echo "Log file downloaded, checking contents..."
             unzip -l app-logs.zip || echo "Cannot list zip contents"
           fi
 
-      # 1️⃣8️⃣ Final status check
+      # 1️⃣7️⃣ Final status check
       - name: Final status check
         run: |
           echo "=== FINAL APPLICATION STATUS ==="
-          az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" --output table
-          
-          echo "=== LATEST DEPLOYMENT STATUS ==="
-          az webapp deployment list-publishing-credentials --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query "status" || echo "Cannot get deployment status"
+          az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" \
+            --output table
