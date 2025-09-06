@@ -115,21 +115,29 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
-      # 1️⃣5️⃣ Debug application startup
+      # 1️⃣5️⃣ Debug application startup using dynamic hostname
       - name: Debug application startup
         run: |
           echo "Checking application status..."
           sleep 60
-          
+
+          # Get actual hostname from Azure
+          HOSTNAME=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "defaultHostName" -o tsv)
+
+          echo "Testing against: https://$HOSTNAME"
+
           echo "Testing basic connectivity:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/ || echo "Root endpoint failed"
-          
+          curl -v https://$HOSTNAME/ || echo "Root endpoint failed"
+
           echo "Testing health endpoint:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/api/health || echo "Health endpoint failed"
-          
+          curl -v https://$HOSTNAME/api/health || echo "Health endpoint failed"
+
           echo "Testing static files:"
-          curl -v https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/index.html || echo "Static files not served"
-          
+          curl -v https://$HOSTNAME/index.html || echo "Static files not served"
+
           az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
