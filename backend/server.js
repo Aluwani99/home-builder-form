@@ -299,10 +299,16 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
+// Start server - OLD CODE (problematic for Azure)
 app.listen(port, () => {
   console.log(`✅ Server running on http://localhost:${port}`);
-  console.log(`🏥 Health check: http://localhost:${port}/api/health`);
-  console.log(`📝 Test form endpoint: http://localhost:${port}/api/test-submit`);
+  // ... rest of your code
+});
+
+// Replace with this - NEW CODE (Azure compatible):
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ Server running on port ${port}`);
+  console.log(`🏥 Health check: http://0.0.0.0:${port}/api/health`);
   
   // Log SharePoint configuration status
   if (process.env.SHAREPOINT_CLIENT_ID && process.env.SHAREPOINT_CLIENT_SECRET) {
@@ -325,4 +331,13 @@ app.listen(port, () => {
   } else {
     console.log(`⚠️  SharePoint authentication not configured - check environment variables`);
   }
+});
+
+// Handle Azure shutdown gracefully
+process.on('SIGINT', () => {
+  console.log('Shutting down gracefully...');
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
 });
