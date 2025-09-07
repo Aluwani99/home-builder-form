@@ -32,23 +32,27 @@ jobs:
       - name: List production dependencies
         run: npm list --production --depth=0
 
-      # 5️⃣ Check environment variables and debug port
-      - name: Check environment variables and debug port
+      # 5️⃣ Check environment variables
+      - name: Check environment variables
         run: |
-          echo "Checking PORT..."
+          echo "Required env variables:"
           echo "PORT=$PORT"
-          node -e "
-            console.log('PORT is', process.env.PORT);
-            require('./server.js');
-          " || echo "❌ Server failed to load"
+          echo "NODE_ENV=$NODE_ENV"
+          echo "SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }}"
+          echo "SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }}"
+          echo "SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}"
 
       # 6️⃣ Test production build locally
       - name: Test production build locally
         run: |
           echo "Testing if the app can start in production mode..."
-          timeout 30s npm start || echo "App may have startup issues - check logs above"
+          PORT=8080 NODE_ENV=production \
+          SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+          SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+          SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
+          timeout 30s npm start || echo "⚠️ App may have startup issues - check logs above"
 
-      # 7️⃣ Check server.js for syntax errors
+      # 7️⃣ Check server.js syntax
       - name: Check server.js for errors
         run: node --check server.js && echo "✅ server.js syntax is valid"
 
@@ -69,7 +73,7 @@ jobs:
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
           startup-command: "npm start"
 
-      # 1️⃣1️⃣ Health check with retry loop
+      # 1️⃣1️⃣ Health check with retry
       - name: Check application deployment
         run: |
           HOSTNAME=$(az webapp show \
