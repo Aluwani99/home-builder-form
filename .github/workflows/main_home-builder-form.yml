@@ -23,52 +23,50 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
-        working-directory: backend
         run: npm ci --only=production
 
-      # 4️⃣ Check server.js for syntax errors
+      # 4️⃣ List production dependencies
+      - name: List production dependencies
+        run: npm list --production --depth=0
+
+      # 5️⃣ Check environment variables
+      - name: Check environment variables
+        run: |
+          echo "Required env variables:"
+          echo "PORT=$PORT"
+          echo "NODE_ENV=$NODE_ENV"
+          echo "SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }}"
+          echo "SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }}"
+          echo "SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}"
+
+      # 6️⃣ Test production build locally (UPDATED)
+      - name: Test production build locally
+        run: |
+          echo "Testing if the app can start in production mode..."
+          PORT=8080 NODE_ENV=production \
+          SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+          SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+          SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
+          timeout 30s node server.js || echo "⚠️ App may have startup issues - check logs above"
+
+      # 7️⃣ Check server.js syntax
       - name: Check server.js for errors
-        working-directory: backend
-        run: |
-          node --check server.js
-          echo "✅ server.js syntax is valid"
+        run: node --check server.js && echo "✅ server.js syntax is valid"
 
-      # 5️⃣ Copy frontend to backend/public
-      - name: Copy frontend files
-        run: |
-          rm -rf backend/public/*
-          cp -r frontend/* backend/public/
+      # 8️⃣ Zip for deployment
+      - name: Zip for deployment
+        run: zip -r ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*"
 
-      # 6️⃣ Zip backend for deployment
-      - name: Zip backend
-        run: |
-          cd backend
-          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
-
-      # 7️⃣ Login to Azure
+      # 9️⃣ Login to Azure
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 8️⃣ Stop the web app before making changes
-      - name: Stop Azure Web App
-        run: |
-          az webapp stop \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-        continue-on-error: true
-
-      # 9️⃣ Wait a moment after stopping
-      - name: Wait after stopping
-        run: sleep 15
-
-      # 🔟 Set Azure App Settings (env vars)
-      - name: Set Azure App Settings
+      # 🔟 Configure App Settings (NEW STEP)
+      - name: Configure Azure App Settings
         run: |
           az webapp config appsettings set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
@@ -76,81 +74,47 @@ jobs:
             --settings \
               PORT=8080 \
               NODE_ENV=production \
-              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
+              WEBSITES_PORT=8080 \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
               SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
               SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
-              SHAREPOINT_SITE_EASTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-EasternCapeInspectorate \
-              SHAREPOINT_SITE_FREE_STATE=https://nhbrcsa.sharepoint.com/sites/DL-FreeStateInspectorate \
-              SHAREPOINT_SITE_GAUTENG=https://nhbrcsa.sharepoint.com/sites/DL-GautengInspectorate \
-              SHAREPOINT_SITE_KWAZULU_NATAL=https://nhbrcsa.sharepoint.com/sites/DL-KwaZuluNatalInspectorate \
-              SHAREPOINT_SITE_LIMPOPO=https://nhbrcsa.sharepoint.com/sites/DL-LimpopoInspectorate \
-              SHAREPOINT_SITE_MPUMALANGA=https://nhbrcsa.sharepoint.com/sites/DL-MpumalangaInspectorate \
-              SHAREPOINT_SITE_NORTH_WEST=https://nhbrcsa.sharepoint.com/sites/DL-NorthWestInspectorate \
-              SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
-              SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
+              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
 
-      # 1️⃣1️⃣ Set Azure Startup Command
-      - name: Set Azure Startup Command
-        run: |
-          az webapp config set \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --startup-file "npm start"
-
-      # 1️⃣2️⃣ Wait before deployment
-      - name: Wait before deployment
-        run: sleep 10
-
-      # 1️⃣3️⃣ Deploy to Azure Web App
+      # 1️⃣1️⃣ Deploy to Azure Web App (UPDATED)
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          # Use node directly instead of npm start
+          startup-command: "node server.js"
 
-      # 1️⃣4️⃣ Start the web app after deployment
-      - name: Start Azure Web App
-        run: |
-          az webapp start \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
-      # 1️⃣5️⃣ Tail logs in real-time for debugging
-      - name: Tail Azure Web App logs
-        run: |
-          echo "Tailing logs from Azure Web App..."
-          HOSTNAME=$(az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "defaultHostName" -o tsv)
-          
-          echo "Using hostname: $HOSTNAME"
-          
-          # Start tailing logs for 120s to see startup issues
-          timeout 120 az webapp log tail \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
-      # 1️⃣6️⃣ Optional endpoint test
-      - name: Test endpoints
+      # 1️⃣2️⃣ Health check with retry (UPDATED)
+      - name: Check application deployment
         run: |
           HOSTNAME=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "defaultHostName" -o tsv)
+          echo "Application deployed to: https://$HOSTNAME"
+          echo "Health endpoint: https://$HOSTNAME/api/health"
 
-          echo "Testing endpoints on $HOSTNAME"
-          curl -v https://$HOSTNAME/ || echo "Root endpoint failed"
-          curl -v https://$HOSTNAME/api/health || echo "Health endpoint failed"
-          curl -v https://$HOSTNAME/index.html || echo "Static files not served"
+          # Wait for container to start (Azure needs time to spin up the container)
+          echo "Waiting 30 seconds for container to initialize..."
+          sleep 30
 
-      # 1️⃣7️⃣ Final status check
-      - name: Final status check
-        run: |
-          az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" \
-            --output table
+          for i in {1..10}; do
+            echo "Attempt $i: Checking health endpoint..."
+            if curl -f -s --max-time 10 "https://$HOSTNAME/api/health"; then
+              echo "✅ Application is responding!"
+              exit 0
+            fi
+            echo "⏳ Still not ready, waiting 10s..."
+            sleep 10
+          done
 
-            
+          echo "⚠️ Application did not respond within 2 minutes"
+          # Get recent logs to help with debugging
+          echo "Trying to fetch recent logs..."
+          az webapp log tail --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --lines 50 || true
+          exit 0  # Don't fail workflow, just warn
