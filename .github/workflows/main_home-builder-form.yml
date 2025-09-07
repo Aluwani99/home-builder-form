@@ -19,26 +19,22 @@ jobs:
       # 1️⃣ Checkout code
       - uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js (remove cache to avoid issues)
+      # 2️⃣ Setup Node.js
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # Removed cache to avoid path issues
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
-        run: cd backend && npm ci --only=production
-        # Using cd instead of working-directory to avoid path issues
+        run: npm ci --only=production
 
       # 4️⃣ Check server.js for syntax errors
       - name: Check server.js for errors
-        run: cd backend && node --check server.js && echo "✅ server.js syntax is valid"
+        run: node --check server.js && echo "✅ server.js syntax is valid"
 
-      # 5️⃣ Zip backend for deployment
-      - name: Zip backend
-        run: |
-          cd backend
-          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*"
+      # 5️⃣ Zip for deployment
+      - name: Zip for deployment
+        run: zip -r ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*"
 
       # 6️⃣ Login to Azure
       - uses: azure/login@v2
