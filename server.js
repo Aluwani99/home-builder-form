@@ -142,37 +142,9 @@ app.post('/api/submit-form', upload.any(), async (req, res) => {
     const client = await getGraphClient();
     const siteId = await getSiteId(client, province);
 
-<<<<<<< HEAD
     console.log(`Using site ID: ${siteId} for province: ${province}`);
 
     const uploadedFileUrls = await processFileUploads(req.files || [], { ...req.body, referenceNumber }, client, province);
-=======
-    const uploadedFileUrls = [];
-    const builderName = req.body.builderName || 'unknown';
-    const referenceNumber = req.body.referenceNumber || 'no_ref';
-
-    // Handle uploaded files
-    if (req.files && req.files.length > 0) {
-      console.log(`Processing ${req.files.length} files`);
-      
-      for (const file of req.files) {
-        try {
-          console.log(`Uploading file: ${file.originalname}, size: ${file.size} bytes`);
-          const ext = path.extname(file.originalname);
-          const sanitizedName = builderName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-          const newFileName = `${sanitizedName}_${referenceNumber}${ext}`;
-          const fileUrl = await uploadFileToSharePoint(file.buffer, newFileName, client, siteId, 'Shared Documents');
-          uploadedFileUrls.push(fileUrl);
-          console.log(`Successfully uploaded: ${newFileName}`);
-        } catch (fileError) {
-          console.error(`Failed to upload file ${file.originalname}:`, fileError);
-          // Continue with other files even if one fails
-        }
-      }
-    } else {
-      console.log('No files to upload');
-    }
->>>>>>> caeb83d0f9e2f077f54178a3ac3c805b5c56d5a0
 
     const savedItem = await saveToSharePoint({ ...req.body, referenceNumber, uploadedFileUrls }, client, province);
 
