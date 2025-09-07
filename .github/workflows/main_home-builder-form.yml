@@ -42,7 +42,7 @@ jobs:
           echo "SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }}"
           echo "SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}"
 
-      # 6️⃣ Test production build locally
+      # 6️⃣ Test production build locally (UPDATED)
       - name: Test production build locally
         run: |
           echo "Testing if the app can start in production mode..."
@@ -50,7 +50,7 @@ jobs:
           SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
           SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
           SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
-          timeout 30s npm start || echo "⚠️ App may have startup issues - check logs above"
+          timeout 30s node server.js || echo "⚠️ App may have startup issues - check logs above"
 
       # 7️⃣ Check server.js syntax
       - name: Check server.js for errors
@@ -65,15 +65,31 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 🔟 Deploy to Azure Web App
+      # 🔟 Configure App Settings (NEW STEP)
+      - name: Configure Azure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              PORT=8080 \
+              NODE_ENV=production \
+              WEBSITES_PORT=8080 \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
+
+      # 1️⃣1️⃣ Deploy to Azure Web App (UPDATED)
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
-          startup-command: "npm start"
+          # Use node directly instead of npm start
+          startup-command: "node server.js"
 
-      # 1️⃣1️⃣ Health check with retry
+      # 1️⃣2️⃣ Health check with retry (UPDATED)
       - name: Check application deployment
         run: |
           HOSTNAME=$(az webapp show \
@@ -83,9 +99,13 @@ jobs:
           echo "Application deployed to: https://$HOSTNAME"
           echo "Health endpoint: https://$HOSTNAME/api/health"
 
-          for i in {1..30}; do
+          # Wait for container to start (Azure needs time to spin up the container)
+          echo "Waiting 30 seconds for container to initialize..."
+          sleep 30
+
+          for i in {1..10}; do
             echo "Attempt $i: Checking health endpoint..."
-            if curl -s --max-time 10 https://$HOSTNAME/api/health; then
+            if curl -f -s --max-time 10 "https://$HOSTNAME/api/health"; then
               echo "✅ Application is responding!"
               exit 0
             fi
@@ -93,5 +113,8 @@ jobs:
             sleep 10
           done
 
-          echo "⚠️ Application did not respond within 5 minutes"
+          echo "⚠️ Application did not respond within 2 minutes"
+          # Get recent logs to help with debugging
+          echo "Trying to fetch recent logs..."
+          az webapp log tail --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --lines 50 || true
           exit 0  # Don't fail workflow, just warn

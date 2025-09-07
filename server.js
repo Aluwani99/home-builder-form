@@ -24,7 +24,7 @@ dotenv.config();
 
 // Create app
 const app = express();
-const port = process.env.PORT;
+const port = process.env.PORT || 5000;  // Azure provides PORT=8080
 
 // ------------------
 // Safety / Debugging
@@ -240,9 +240,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`✅ Server running on http://localhost:${port}`);
+// Start server - FIXED: Added '0.0.0.0' as the host parameter
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ Server running on http://0.0.0.0:${port}`);
   console.log(`🏥 Health check: http://localhost:${port}/api/health`);
   console.log(`📝 Form endpoint: http://localhost:${port}/api/submit-form`);
   console.log(`🔧 Debug endpoints:`);
