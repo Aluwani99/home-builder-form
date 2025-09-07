@@ -1304,6 +1304,7 @@ function setupAddressAutocomplete() {
       throw error;
     } finally {
       loadingIndicator.classList.remove('active');
+<<<<<<< HEAD
     }
   }
 
@@ -1398,7 +1399,109 @@ function formatAddressSuggestion(result) {
       suggestionsList.classList.remove('active');
       updateReviewSection();
       return;
+=======
+>>>>>>> caeb83d0f9e2f077f54178a3ac3c805b5c56d5a0
     }
+  }
+
+  // Format address suggestion for readability
+  function formatAddressSuggestion(result) {
+    const addr = result.address;
+    const street = addr.road || addr.pedestrian || addr.cycleway || '';
+    const suburb = addr.suburb || addr.neighbourhood || addr.village || '';
+    const city = addr.city || addr.town || addr.village || '';
+    const postcode = addr.postcode || '';
+    const country = addr.country || '';
+
+    const formatted = [street, suburb, city, postcode].filter(Boolean).join(', ');
+    return formatted ? `${formatted}, ${country}` : result.display_name;
+  }
+
+  // Handle input with debounce
+  propertyInput.addEventListener('input', () => {
+    const query = propertyInput.value.trim();
+    if (query.length < 3) {
+      suggestionsList.innerHTML = '';
+      suggestionsList.classList.remove('active');
+      updateReviewSection();
+      return;
+    }
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        const results = await fetchAddressSuggestions(query);
+        if (results.length === 0) {
+          suggestionsList.innerHTML = '<li class="error"><i class="fas fa-exclamation-circle suggestion-icon"></i> No addresses found</li>';
+        } else {
+          suggestionsList.innerHTML = results.map(result =>
+            `<li data-value="${result.display_name}">
+              <i class="fas fa-map-marker-alt suggestion-icon"></i>${formatAddressSuggestion(result)}
+            </li>`
+          ).join('');
+        }
+        suggestionsList.classList.add('active');
+      } catch (err) {
+        suggestionsList.innerHTML = '<li class="error"><i class="fas fa-exclamation-triangle suggestion-icon"></i> Error loading addresses</li>';
+        suggestionsList.classList.add('active');
+      }
+    }, 500);
+  });
+
+  // Click suggestion to fill textarea
+  suggestionsList.addEventListener('click', (e) => {
+    const li = e.target.closest('li');
+    if (!li) return;
+    propertyInput.value = li.dataset.value;
+    suggestionsList.innerHTML = '';
+    suggestionsList.classList.remove('active');
+    updateReviewSection();
+  });
+
+  // Close suggestions if clicked outside
+  document.addEventListener('click', (e) => {
+    if (!propertyInput.contains(e.target) && !suggestionsList.contains(e.target)) {
+      suggestionsList.classList.remove('active');
+    }
+  });
+
+  // Keyboard navigation for suggestions
+  propertyInput.addEventListener('keydown', (e) => {
+    if (!suggestionsList.classList.contains('active')) return;
+    const suggestions = Array.from(suggestionsList.querySelectorAll('li:not(.loading):not(.error)'));
+    if (!suggestions.length) return;
+    const currentFocus = suggestionsList.querySelector('li.highlighted');
+    let index = currentFocus ? suggestions.indexOf(currentFocus) : -1;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      index = (index + 1) % suggestions.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      index = (index - 1 + suggestions.length) % suggestions.length;
+    } else if (e.key === 'Enter' && currentFocus) {
+      e.preventDefault();
+      propertyInput.value = currentFocus.dataset.value;
+      suggestionsList.classList.remove('active');
+      updateReviewSection();
+      return;
+    } else if (e.key === 'Escape') {
+      suggestionsList.classList.remove('active');
+      return;
+    } else return;
+
+    suggestions.forEach(s => s.classList.remove('highlighted'));
+    suggestions[index].classList.add('highlighted');
+    suggestions[index].scrollIntoView({ block: 'nearest' });
+  });
+
+  // Show suggestions on focus
+  propertyInput.addEventListener('focus', () => {
+    if (propertyInput.value.trim().length >= 3 && suggestionsList.children.length > 0) {
+      suggestionsList.classList.add('active');
+    }
+  });
+}
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {

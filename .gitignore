@@ -77,19 +77,3 @@ jspm_packages/
 
 # Azure deployment
 .azure/
-
-# Build artifacts
-dist/
-build/
-
-# Temporary folders
-tmp/
-temp/
-uploads/
-
-# Counter file (can be regenerated)
-counter.json
-
-# Test files (optional - remove if you want to keep them)
-test-*.js
-debug-*.js" > .gitignore

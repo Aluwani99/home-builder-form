@@ -153,4 +153,5 @@ jobs:
             --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" \
             --output table
 
+
             
