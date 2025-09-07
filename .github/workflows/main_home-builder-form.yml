@@ -41,78 +41,33 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Stop the web app before making changes
-      - name: Stop Azure Web App
-        run: |
-          az webapp stop \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-        continue-on-error: true
-
-      # 8️⃣ Wait a moment after stopping
-      - name: Wait after stopping
-        run: sleep 15
-
-      # 9️⃣ Set Azure App Settings (env vars)
-      - name: Set Azure App Settings
-        run: |
-          az webapp config appsettings set \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --settings \
-              PORT=8080 \
-              NODE_ENV=production \
-              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
-              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
-              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
-              SHAREPOINT_SITE_EASTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-EasternCapeInspectorate \
-              SHAREPOINT_SITE_FREE_STATE=https://nhbrcsa.sharepoint.com/sites/DL-FreeStateInspectorate \
-              SHAREPOINT_SITE_GAUTENG=https://nhbrcsa.sharepoint.com/sites/DL-GautengInspectorate \
-              SHAREPOINT_SITE_KWAZULU_NATAL=https://nhbrcsa.sharepoint.com/sites/DL-KwaZuluNatalInspectorate \
-              SHAREPOINT_SITE_LIMPOPO=https://nhbrcsa.sharepoint.com/sites/DL-LimpopoInspectorate \
-              SHAREPOINT_SITE_MPUMALANGA=https://nhbrcsa.sharepoint.com/sites/DL-MpumalangaInspectorate \
-              SHAREPOINT_SITE_NORTH_WEST=https://nhbrcsa.sharepoint.com/sites/DL-NorthWestInspectorate \
-              SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
-              SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
-
-      # 🔟 Set Azure Startup Command
-      - name: Set Azure Startup Command
-        run: |
-          az webapp config set \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --startup-file "npm start"
-
-      # 1️⃣1️⃣ Wait before deployment
-      - name: Wait before deployment
-        run: sleep 10
-
-      # 1️⃣2️⃣ Deploy to Azure Web App
+      # 7️⃣ Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          startup-command: "npm start"
 
-      # 1️⃣3️⃣ Start the web app after deployment
-      - name: Start Azure Web App
-        run: |
-          az webapp start \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
-      # ✅ Replace tail logs + test endpoints with this simplified check
+      # 8️⃣ Health check with retry loop
       - name: Check application deployment
         run: |
-          # Wait for deployment to complete
-          sleep 20
           HOSTNAME=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "defaultHostName" -o tsv)
           echo "Application deployed to: https://$HOSTNAME"
           echo "Health endpoint: https://$HOSTNAME/api/health"
-          
-          # Try to check health endpoint (but don't fail if not ready yet)
-          curl --max-time 30 https://$HOSTNAME/api/health || \
-            echo "Application may still be starting up - this is normal for first deployment"
+
+          for i in {1..30}; do
+            echo "Attempt $i: Checking health endpoint..."
+            if curl -s --max-time 10 https://$HOSTNAME/api/health; then
+              echo "✅ Application is responding!"
+              exit 0
+            fi
+            echo "⏳ Still not ready, waiting 10s..."
+            sleep 10
+          done
+
+          echo "⚠️ Application did not respond within 5 minutes"
+          exit 0  # Don't fail workflow, just warn
