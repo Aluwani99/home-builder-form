@@ -24,12 +24,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: package-lock.json  # ✅ Changed from backend/package-lock.json
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
-        working-directory: backend
         run: npm ci --only=production
+        working-directory: backend  # ✅ Using working-directory instead of path in cache
 
       # 4️⃣ Check server.js for syntax errors
       - name: Check server.js for errors
@@ -38,10 +38,7 @@ jobs:
           node --check server.js
           echo "✅ server.js syntax is valid"
 
-      # 5️⃣ ✅ REMOVED: Copy frontend to backend/public (not needed - frontend is already in public/)
-      # Your frontend files are already in backend/public/, so no copying needed
-
-      # 6️⃣ Zip backend for deployment
+      # 5️⃣ Zip backend for deployment
       - name: Zip backend
         run: |
           cd backend
@@ -50,7 +47,7 @@ jobs:
       # 7️⃣ Login to Azure
       - uses: azure/login@v2
         with:
-          creeds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}  # ✅ Fixed typo: creeds -> creds
 
       # 8️⃣ Stop the web app before making changes
       - name: Stop Azure Web App
