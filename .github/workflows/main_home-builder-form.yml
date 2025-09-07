@@ -28,40 +28,40 @@ jobs:
       - name: Install backend dependencies
         run: npm ci --only=production
 
-        # Add these steps RIGHT AFTER "Install backend dependencies"
+      # 4️⃣ List production dependencies
+      - name: List production dependencies
+        run: npm list --production --depth=0
 
-- name: List production dependencies
-  run: npm list --production --depth=0
+      # 5️⃣ Check environment variables and debug port
+      - name: Check environment variables and debug port
+        run: |
+          echo "Checking PORT..."
+          echo "PORT=$PORT"
+          node -e "
+            console.log('PORT is', process.env.PORT);
+            require('./server.js');
+          " || echo "❌ Server failed to load"
 
-- name: Check environment variables
-  run: |
-    echo "Checking if required environment variables are set..."
-    # Test if your app can start with minimal config
-    NODE_ENV=production PORT=8080 node -e "
-      console.log('Testing basic Node.js startup...');
-      require('./server.js');
-      console.log('✅ Server module loaded successfully');
-    " || echo "❌ Server module failed to load"
+      # 6️⃣ Test production build locally
+      - name: Test production build locally
+        run: |
+          echo "Testing if the app can start in production mode..."
+          timeout 30s npm start || echo "App may have startup issues - check logs above"
 
-- name: Test production build locally
-  run: |
-    echo "Testing if the app can start in production mode..."
-    timeout 30s npm start || echo "App may have startup issues - check logs above"
-
-      # 4️⃣ Check server.js for syntax errors
+      # 7️⃣ Check server.js for syntax errors
       - name: Check server.js for errors
         run: node --check server.js && echo "✅ server.js syntax is valid"
 
-      # 5️⃣ Zip for deployment
+      # 8️⃣ Zip for deployment
       - name: Zip for deployment
         run: zip -r ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*"
 
-      # 6️⃣ Login to Azure
+      # 9️⃣ Login to Azure
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Deploy to Azure Web App
+      # 🔟 Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
@@ -69,7 +69,7 @@ jobs:
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
           startup-command: "npm start"
 
-      # 8️⃣ Health check with retry loop
+      # 1️⃣1️⃣ Health check with retry loop
       - name: Check application deployment
         run: |
           HOSTNAME=$(az webapp show \
