@@ -1,4 +1,4 @@
-name: Build and deploy Node.js app to Azure Web App - home-builder-form
+name: Build and Deploy Node.js App to Azure Web App - Linux
 
 on:
   push:
@@ -6,49 +6,152 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  AZURE_WEBAPP_NAME: 'home-builder-form'
+  AZURE_WEBAPP_PACKAGE_PATH: 'release.zip'
+  NODE_VERSION: '20.x'
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # 1️⃣ Checkout code
+      - uses: actions/checkout@v4
 
       # 2️⃣ Setup Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
       # 3️⃣ Install backend dependencies
       - name: Install backend dependencies
         working-directory: backend
-        run: npm install
+        run: npm ci --only=production
 
-      # 4️⃣ Copy frontend files into backend/public
-      - name: Copy frontend to backend/public
+      # 4️⃣ Check server.js for syntax errors
+      - name: Check server.js for errors
+        working-directory: backend
         run: |
-          mkdir -p backend/public
+          node --check server.js
+          echo "✅ server.js syntax is valid"
+
+      # 5️⃣ Copy frontend to backend/public
+      - name: Copy frontend files
+        run: |
+          rm -rf backend/public/*
           cp -r frontend/* backend/public/
 
-      # 5️⃣ Zip backend folder for Azure deployment
-      - name: Zip backend for deployment
+      # 6️⃣ Zip backend for deployment
+      - name: Zip backend
         run: |
           cd backend
-          zip -r ../release.zip .
+          zip -r ../${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env.local" "test/*" "counter.json"
 
-      # 6️⃣ Login to Azure using Service Principal
-      - name: Login to Azure
-        uses: azure/login@v2
+      # 7️⃣ Login to Azure
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Deploy to Azure Web App
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+      # 8️⃣ Stop the web app before making changes
+      - name: Stop Azure Web App
+        run: |
+          az webapp stop \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+        continue-on-error: true
+
+      # 9️⃣ Wait a moment after stopping
+      - name: Wait after stopping
+        run: sleep 15
+
+      # 🔟 Set Azure App Settings (env vars)
+      - name: Set Azure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              PORT=8080 \
+              NODE_ENV=production \
+              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
+              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+              SHAREPOINT_SITE_EASTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-EasternCapeInspectorate \
+              SHAREPOINT_SITE_FREE_STATE=https://nhbrcsa.sharepoint.com/sites/DL-FreeStateInspectorate \
+              SHAREPOINT_SITE_GAUTENG=https://nhbrcsa.sharepoint.com/sites/DL-GautengInspectorate \
+              SHAREPOINT_SITE_KWAZULU_NATAL=https://nhbrcsa.sharepoint.com/sites/DL-KwaZuluNatalInspectorate \
+              SHAREPOINT_SITE_LIMPOPO=https://nhbrcsa.sharepoint.com/sites/DL-LimpopoInspectorate \
+              SHAREPOINT_SITE_MPUMALANGA=https://nhbrcsa.sharepoint.com/sites/DL-MpumalangaInspectorate \
+              SHAREPOINT_SITE_NORTH_WEST=https://nhbrcsa.sharepoint.com/sites/DL-NorthWestInspectorate \
+              SHAREPOINT_SITE_NORTHERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-NorthernCapeInspectorate \
+              SHAREPOINT_SITE_WESTERN_CAPE=https://nhbrcsa.sharepoint.com/sites/DL-WesternCapeInspectorate
+
+      # 1️⃣1️⃣ Set Azure Startup Command
+      - name: Set Azure Startup Command
+        run: |
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --startup-file "npm start"
+
+      # 1️⃣2️⃣ Wait before deployment
+      - name: Wait before deployment
+        run: sleep 10
+
+      # 1️⃣3️⃣ Deploy to Azure Web App
+      - uses: azure/webapps-deploy@v3
         with:
-          app-name: 'home-builder-form'
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'production'
-          package: release.zip
-          enable-oryx-build: false   # Prevent Azure from rebuilding Node.js app, use your zip
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      # 1️⃣4️⃣ Start the web app after deployment
+      - name: Start Azure Web App
+        run: |
+          az webapp start \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+      # 1️⃣5️⃣ Tail logs in real-time for debugging
+      - name: Tail Azure Web App logs
+        run: |
+          echo "Tailing logs from Azure Web App..."
+          HOSTNAME=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "defaultHostName" -o tsv)
+          
+          echo "Using hostname: $HOSTNAME"
+          
+          # Start tailing logs for 120s to see startup issues
+          timeout 120 az webapp log tail \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+      # 1️⃣6️⃣ Optional endpoint test
+      - name: Test endpoints
+        run: |
+          HOSTNAME=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "defaultHostName" -o tsv)
+
+          echo "Testing endpoints on $HOSTNAME"
+          curl -v https://$HOSTNAME/ || echo "Root endpoint failed"
+          curl -v https://$HOSTNAME/api/health || echo "Health endpoint failed"
+          curl -v https://$HOSTNAME/index.html || echo "Static files not served"
+
+      # 1️⃣7️⃣ Final status check
+      - name: Final status check
+        run: |
+          az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" \
+            --output table
+
+
+            
