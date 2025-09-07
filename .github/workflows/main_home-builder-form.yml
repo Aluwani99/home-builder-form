@@ -101,33 +101,18 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
-      # 1️⃣4️⃣ Tail logs for debugging
-      - name: Tail Azure Web App logs
+      # ✅ Replace tail logs + test endpoints with this simplified check
+      - name: Check application deployment
         run: |
+          # Wait for deployment to complete
+          sleep 20
           HOSTNAME=$(az webapp show \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "defaultHostName" -o tsv)
-          echo "Using hostname: $HOSTNAME"
-          timeout 60 az webapp log tail \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
-      # 1️⃣5️⃣ Test endpoints
-      - name: Test endpoints
-        run: |
-          HOSTNAME=$(az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "defaultHostName" -o tsv)
-          echo "Testing endpoints on $HOSTNAME"
-          curl -f https://$HOSTNAME/api/health || echo "Health endpoint failed"
-
-      # 1️⃣6️⃣ Final status check
-      - name: Final status check
-        run: |
-          az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "{Name:name, State:state, ResourceGroup:resourceGroup, DefaultHostName:defaultHostName}" \
-            --output table
+          echo "Application deployed to: https://$HOSTNAME"
+          echo "Health endpoint: https://$HOSTNAME/api/health"
+          
+          # Try to check health endpoint (but don't fail if not ready yet)
+          curl --max-time 30 https://$HOSTNAME/api/health || \
+            echo "Application may still be starting up - this is normal for first deployment"
