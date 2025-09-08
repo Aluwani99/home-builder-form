@@ -1713,16 +1713,18 @@ function setupFileUpload() {
     handleFiles(files);
   });
 
-  // Handle file selection via browse
+  // Handle file selection via browse - REMOVE THE RESET LINE
   fileInput.addEventListener('change', function() {
     handleFiles(this.files);
-    this.value = ''; // Reset input after handling files
+    // REMOVE THIS LINE: this.value = ''; // This is causing the issue
   });
 
   // Clear all files
   clearAllBtn.addEventListener('click', () => {
     uploadedFiles = [];
     fileList.innerHTML = '';
+    // Reset the input when clearing all files
+    fileInput.value = '';
   });
 
   function handleFiles(files) {
