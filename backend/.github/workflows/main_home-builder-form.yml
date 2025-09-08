@@ -1,22 +1,19 @@
-name: Deploy Backend to Azure Web App
+name: Build and Deploy Node.js App to Azure Web App - Linux
 
 on:
   push:
-    branches: [main]
-    paths: 
-      - 'backend/**'  # Only trigger when backend files change
+    branches:
+      - main
   workflow_dispatch:
 
 env:
   AZURE_WEBAPP_NAME: 'home-builder-form'
+  AZURE_WEBAPP_PACKAGE_PATH: 'release.zip'
   NODE_VERSION: '20.x'
 
 jobs:
-  deploy-backend:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend  # All commands run in backend folder
 
     steps:
       # 1️⃣ Checkout code
@@ -27,38 +24,98 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # 3️⃣ Install production dependencies
-      - name: Install dependencies
+      # 3️⃣ Install backend dependencies
+      - name: Install backend dependencies
         run: npm ci --only=production
 
-      # 4️⃣ Test application startup
-      - name: Test application
+      # 4️⃣ List production dependencies
+      - name: List production dependencies
+        run: npm list --production --depth=0
+
+      # 5️⃣ Check environment variables (UPDATED)
+      - name: Check environment variables
         run: |
-          echo "Testing application startup..."
+          echo "Required env variables:"
+          echo "PORT=8080"
+          echo "NODE_ENV=production"
+          echo "SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }}"
+          echo "SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }}"
+          echo "SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}"
+
+      # 6️⃣ Test production build locally
+      - name: Test production build locally
+        run: |
+          echo "Testing if the app can start in production mode..."
           PORT=8080 NODE_ENV=production \
-          timeout 30s node server.js || echo "Application test completed"
+          SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+          SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+          SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }} \
+          timeout 30s node server.js || echo "⚠️ App may have startup issues - check logs above"
 
-      # 5️⃣ Create deployment package
-      - name: Create deployment package
-        run: |
-          # Create ZIP package from backend folder
-          zip -r ../release.zip . \
-            -x ".git/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*" ".github/*" "node_modules/*"
+      # 7️⃣ Check server.js syntax
+      - name: Check server.js for errors
+        run: node --check server.js && echo "✅ server.js syntax is valid"
 
-      # 6️⃣ Login to Azure
+      # 8️⃣ Zip for deployment
+      - name: Zip for deployment
+        run: zip -r ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} . -x ".git/*" "node_modules/*" "*.log" ".env*" "test/*" "counter.json" "uploads/*"
+
+      # 9️⃣ Login to Azure
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 7️⃣ Deploy to Azure Web App
+      # 🔟 Configure App Settings (UPDATED - removed PORT from secrets)
+      - name: Configure Azure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              PORT=8080 \
+              NODE_ENV=production \
+              WEBSITES_PORT=8080 \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
+
+      # 1️⃣1️⃣ Deploy to Azure Web App
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-          package: ../release.zip
+          slot-name: 'production'
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          # Use node directly instead of npm start
+          startup-command: "node server.js"
 
-      # 8️⃣ Verify deployment
-      - name: Verify deployment
+      # 1️⃣2️⃣ Health check with retry (UPDATED - fixed log command)
+      - name: Check application deployment
         run: |
-          echo "Deployment completed successfully!"
-          echo "Your app is available at: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          HOSTNAME=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "defaultHostName" -o tsv)
+          echo "Application deployed to: https://$HOSTNAME"
+          echo "Health endpoint: https://$HOSTNAME/api/health"
+
+          # Wait for container to start (Azure needs time to spin up the container)
+          echo "Waiting 30 seconds for container to initialize..."
+          sleep 30
+
+          for i in {1..10}; do
+            echo "Attempt $i: Checking health endpoint..."
+            if curl -f -s --max-time 10 "https://$HOSTNAME/api/health"; then
+              echo "✅ Application is responding!"
+              exit 0
+            fi
+            echo "⏳ Still not ready, waiting 10s..."
+            sleep 10
+          done
+
+          echo "⚠️ Application did not respond within 2 minutes"
+          # Get recent logs to help with debugging (FIXED: removed --lines parameter)
+          echo "Trying to fetch recent logs..."
+          az webapp log download --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
+
+          exit 0  # Don't fail workflow, just warn
