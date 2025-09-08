@@ -1105,6 +1105,13 @@
             <input type="file" id="fileUpload" name="fileUpload" multiple class="file-input" />
           </div>
 
+          <!-- Add this button below the file drop area -->
+<div style="text-align: right; margin-top: 10px;">
+  <button type="button" id="clearAllFiles" class="btn btn-secondary" style="padding: 8px 16px; font-size: 14px;">
+    <i class="fas fa-trash"></i> Clear All Files
+  </button>
+</div>
+
           <!-- File preview list -->
           <div class="file-list" id="fileList"></div>
         </div>
@@ -1663,171 +1670,174 @@ function showSuccessScreen() {
       clearInterval(countdownInterval);
     }
 
-    function setupFileUpload() {
-      const fileInput = document.getElementById('fileUpload');
-      const fileDropArea = document.getElementById('fileDropArea');
-      const fileList = document.getElementById('fileList');
-      
-      // Click to select files
-      fileDropArea.addEventListener('click', function(e) {
-        if (!e.target.classList.contains('file-remove')) {
-          fileInput.click();
-        }
-      });
+function setupFileUpload() {
+  const fileInput = document.getElementById('fileUpload');
+  const fileDropArea = document.getElementById('fileDropArea');
+  const fileList = document.getElementById('fileList');
+  
+  // Click to select files
+  fileDropArea.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('file-remove')) {
+      fileInput.click();
+    }
+  });
 
-      // Drag and drop events
-      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, preventDefaults, false);
-      });
+  // Drag and drop events
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    fileDropArea.addEventListener(eventName, preventDefaults, false);
+  });
 
-      function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // Highlight drop area when item is dragged over it
+  ['dragenter', 'dragover'].forEach(eventName => {
+    fileDropArea.addEventListener(eventName, highlight, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    fileDropArea.addEventListener(eventName, unhighlight, false);
+  });
+
+  function highlight() {
+    fileDropArea.style.borderColor = 'var(--primary)';
+    fileDropArea.style.backgroundColor = '#e0f2ff';
+  }
+
+  function unhighlight() {
+    fileDropArea.style.borderColor = '#cbd5e1';
+    fileDropArea.style.backgroundColor = '#f8fafc';
+  }
+
+  // Handle dropped files
+  fileDropArea.addEventListener('drop', handleDrop, false);
+
+  function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    handleFiles(files);
+  }
+
+  // Handle file selection via browse - REMOVED THE RESET LINE
+  fileInput.addEventListener('change', function() {
+    handleFiles(this.files);
+    // REMOVED: this.value = ''; // This was causing the issue
+  });
+
+  function handleFiles(files) {
+    if (files.length === 0) return;
+
+    // Check total files limit
+    if (uploadedFiles.length + files.length > 10) {
+      showMessage('You can upload a maximum of 10 files', 'error');
+      return;
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      // Check file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        showMessage(`File "${file.name}" is too large. Max size is 10MB.`, 'error');
+        continue;
       }
 
-      // Highlight drop area when item is dragged over it
-      ['dragenter', 'dragover'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, highlight, false);
-      });
-
-      ['dragleave', 'drop'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, unhighlight, false);
-      });
-
-      function highlight() {
-        fileDropArea.style.borderColor = 'var(--primary)';
-        fileDropArea.style.backgroundColor = '#e0f2ff';
+      // Check file type
+      const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif'];
+      const fileExtension = '.' + file.name.toLowerCase().split('.').pop();
+      if (!allowedExtensions.includes(fileExtension)) {
+        showMessage(`File "${file.name}" is not a supported format.`, 'error');
+        continue;
       }
 
-      function unhighlight() {
-        fileDropArea.style.borderColor = '#cbd5e1';
-        fileDropArea.style.backgroundColor = '#f8fafc';
-      }
-
-      // Handle dropped files
-      fileDropArea.addEventListener('drop', handleDrop, false);
-
-      function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        handleFiles(files);
-      }
-
-      // Handle file selection via browse
-      fileInput.addEventListener('change', function() {
-        handleFiles(this.files);
-        this.value = ''; // Reset input to allow selecting same file again
-      });
-
-      function handleFiles(files) {
-        if (files.length === 0) return;
-
-        // Check total files limit
-        if (uploadedFiles.length + files.length > 10) {
-          showMessage('You can upload a maximum of 10 files', 'error');
-          return;
-        }
-
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-
-          // Check file size (10MB max)
-          if (file.size > 10 * 1024 * 1024) {
-            showMessage(`File "${file.name}" is too large. Max size is 10MB.`, 'error');
-            continue;
-          }
-
-          // Check file type
-          const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif'];
-          const fileExtension = '.' + file.name.toLowerCase().split('.').pop();
-          if (!allowedExtensions.includes(fileExtension)) {
-            showMessage(`File "${file.name}" is not a supported format.`, 'error');
-            continue;
-          }
-
-          // Avoid duplicates
-          const exists = uploadedFiles.some(f => f.name === file.name && f.size === file.size);
-          if (!exists) {
-            uploadedFiles.push(file);
-            displayFile(file);
-          }
-        }
-        
-        // Clear any upload error messages
-        const errorMsg = fileDropArea.querySelector('.upload-error-message');
-        if (errorMsg) {
-          errorMsg.remove();
-        }
-      }
-
-      function displayFile(file) {
-        const fileItem = document.createElement('div');
-        fileItem.className = 'file-item';
-        
-        const fileItemContent = document.createElement('div');
-        fileItemContent.className = 'file-item-content';
-        
-        // Determine file icon based on extension
-        const ext = file.name.split('.').pop().toLowerCase();
-        let iconClass = 'fas fa-file';
-        let iconColor = '#2563eb';
-        
-        if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) {
-          iconClass = 'fas fa-file-image';
-          iconColor = '#4CAF50';
-        } else if (ext === 'pdf') {
-          iconClass = 'fas fa-file-pdf';
-          iconColor = '#FF5252';
-        } else if (['doc', 'docx'].includes(ext)) {
-          iconClass = 'fas fa-file-word';
-          iconColor = '#2196F3';
-        } else if (['xls', 'xlsx'].includes(ext)) {
-          iconClass = 'fas fa-file-excel';
-          iconColor = '#4CAF50';
-        }
-        
-        const fileIcon = document.createElement('i');
-        fileIcon.className = iconClass + ' file-icon';
-        fileIcon.style.color = iconColor;
-        
-        const fileName = document.createElement('span');
-        fileName.className = 'file-name';
-        fileName.textContent = file.name;
-        
-        const fileSize = document.createElement('span');
-        fileSize.className = 'file-size';
-        fileSize.textContent = formatFileSize(file.size);
-        
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'remove-btn';
-        removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-        removeBtn.title = 'Remove file';
-        removeBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          // Remove from uploadedFiles array
-          uploadedFiles = uploadedFiles.filter(f => !(f.name === file.name && f.size === file.size));
-          // Remove from DOM
-          fileItem.remove();
-        });
-        
-        fileItemContent.appendChild(fileIcon);
-        fileItemContent.appendChild(fileName);
-        fileItemContent.appendChild(fileSize);
-        fileItem.appendChild(fileItemContent);
-        fileItem.appendChild(removeBtn);
-        
-        fileList.appendChild(fileItem);
-      }
-      
-      function formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      // Avoid duplicates
+      const exists = uploadedFiles.some(f => f.name === file.name && f.size === file.size);
+      if (!exists) {
+        uploadedFiles.push(file);
+        displayFile(file);
       }
     }
+    
+    // Clear any upload error messages
+    const errorMsg = fileDropArea.querySelector('.upload-error-message');
+    if (errorMsg) {
+      errorMsg.remove();
+    }
+    
+    // Reset the file input to allow selecting the same files again
+    fileInput.value = '';
+  }
+
+  function displayFile(file) {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    const fileItemContent = document.createElement('div');
+    fileItemContent.className = 'file-item-content';
+    
+    // Determine file icon based on extension
+    const ext = file.name.split('.').pop().toLowerCase();
+    let iconClass = 'fas fa-file';
+    let iconColor = '#2563eb';
+    
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) {
+      iconClass = 'fas fa-file-image';
+      iconColor = '#4CAF50';
+    } else if (ext === 'pdf') {
+      iconClass = 'fas fa-file-pdf';
+      iconColor = '#FF5252';
+    } else if (['doc', 'docx'].includes(ext)) {
+      iconClass = 'fas fa-file-word';
+      iconColor = '#2196F3';
+    } else if (['xls', 'xlsx'].includes(ext)) {
+      iconClass = 'fas fa-file-excel';
+      iconColor = '#4CAF50';
+    }
+    
+    const fileIcon = document.createElement('i');
+    fileIcon.className = iconClass + ' file-icon';
+    fileIcon.style.color = iconColor;
+    
+    const fileName = document.createElement('span');
+    fileName.className = 'file-name';
+    fileName.textContent = file.name;
+    
+    const fileSize = document.createElement('span');
+    fileSize.className = 'file-size';
+    fileSize.textContent = formatFileSize(file.size);
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-btn';
+    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    removeBtn.title = 'Remove file';
+    removeBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      // Remove from uploadedFiles array
+      uploadedFiles = uploadedFiles.filter(f => !(f.name === file.name && f.size === file.size));
+      // Remove from DOM
+      fileItem.remove();
+    });
+    
+    fileItemContent.appendChild(fileIcon);
+    fileItemContent.appendChild(fileName);
+    fileItemContent.appendChild(fileSize);
+    fileItem.appendChild(fileItemContent);
+    fileItem.appendChild(removeBtn);
+    
+    fileList.appendChild(fileItem);
+  }
+  
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+}
 
     function updateReviewSection() {
       // Update review section with form values
