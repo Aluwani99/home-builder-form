@@ -15,37 +15,31 @@ jobs:
     environment: production
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Build
-      run: npm run build --if-present
+      - name: Build frontend (if exists)
+        run: npm run build --if-present
 
-    - name: Upload artifact for deployment
-      uses: actions/upload-artifact@v4
-      with:
-        name: node-app
-        path: .
-        exclude: |
-          .git/**
-          .github/**
-          .vscode/**
-          node_modules/**
-          *.log
-          .env*
-          test/**
-          coverage/**
-          dist/**
-          build/**
-          uploads/**
+      - name: Prepare artifact for deployment
+        run: |
+          # Remove node_modules to reduce ZIP size
+          rm -rf node_modules
+          zip -r node-app.zip . -x ".git/*" ".github/*" ".vscode/*" "node_modules/*" "*.log" ".env*" "test/*" "coverage/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-app
+          path: node-app.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -53,38 +47,39 @@ jobs:
     environment: production
 
     steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: node-app
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: node-app
+          path: .
 
-    - name: Login to Azure
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Configure App Settings
-      run: |
-        az webapp config appsettings set \
-          --name ${{ env.AZURE_WEBAPP_NAME }} \
-          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-          --settings \
-            PORT=8080 \
-            NODE_ENV=production \
-            WEBSITES_PORT=8080 \
-            WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
-            SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
-            SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
-            SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
+      - name: Configure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              PORT=8080 \
+              NODE_ENV=production \
+              WEBSITES_PORT=8080 \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
+              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
+              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
+              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
 
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-        package: .
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          package: node-app.zip
 
-    - name: Verify deployment
-      run: |
-        echo "Deployment completed!"
-        echo "Your app is available at: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+      - name: Verify deployment
+        run: |
+          echo "Deployment completed!"
+          echo "Your app is available at: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
