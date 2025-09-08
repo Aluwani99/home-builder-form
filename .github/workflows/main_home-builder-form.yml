@@ -1,9 +1,8 @@
-name: Build and Deploy Node.js App to Azure Web App - Linux
+name: Deploy to Azure Web App
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -13,102 +12,31 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
-      # 1️⃣ Checkout code
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
 
-      # 3️⃣ Install dependencies
-      - name: Install dependencies
-        run: npm ci --production
+    - name: Install dependencies
+      run: npm ci
 
-      # 4️⃣ Build (if needed)
-      - name: Build application
-        run: npm run build --if-present
+    - name: Build
+      run: npm run build --if-present
 
-      # 5️⃣ Create deployment package (EXCLUDE more files)
-      - name: Create deployment package
-        run: |
-          # Create a clean deployment directory
-          mkdir -p deployment
-          
-          # Copy only necessary files
-          cp -r package.json package-lock.json server.js config/ services/ public/ deployment/
-          
-          # Copy node_modules without dev dependencies
-          cp -r node_modules deployment/
-          
-          # Remove any platform-specific binaries that might cause issues
-          find deployment/node_modules -name "*.node" -delete 2>/dev/null || true
-          find deployment/node_modules -name "*.dll" -delete 2>/dev/null || true
-          find deployment/node_modules -name "*.exe" -delete 2>/dev/null || true
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 6️⃣ Zip for deployment (from the clean deployment directory)
-      - name: Zip for deployment
-        run: |
-          cd deployment
-          zip -r ../release.zip . -x "*.git*" "*.log" ".env*" "test/*" "coverage/*" "docs/*"
-          cd ..
-          echo "Zip file size: $(du -h release.zip | cut -f1)"
-
-      # 7️⃣ Login to Azure
-      - uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # 8️⃣ Configure App Settings
-      - name: Configure Azure App Settings
-        run: |
-          az webapp config appsettings set \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --settings \
-              PORT=8080 \
-              NODE_ENV=production \
-              WEBSITES_PORT=8080 \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
-              SHAREPOINT_CLIENT_ID=${{ secrets.SHAREPOINT_CLIENT_ID }} \
-              SHAREPOINT_CLIENT_SECRET=${{ secrets.SHAREPOINT_CLIENT_SECRET }} \
-              SHAREPOINT_TENANT_ID=${{ secrets.SHAREPOINT_TENANT_ID }}
-
-      # 9️⃣ Deploy to Azure Web App using Oryx build system
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          slot-name: 'production'
-          package: ./release.zip
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-
-      # 🔟 Health check
-      - name: Check application deployment
-        run: |
-          HOSTNAME=$(az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "defaultHostName" -o tsv)
-          
-          echo "Application deployed to: https://$HOSTNAME"
-          echo "Health endpoint: https://$HOSTNAME/api/health"
-          
-          # Wait longer for Azure
-          echo "Waiting 60 seconds for container to initialize..."
-          sleep 60
-          
-          # Try health check
-          if curl -f -s --max-time 30 "https://$HOSTNAME/api/health"; then
-            echo "✅ Application is responding!"
-            exit 0
-          else
-            echo "⚠️ Health check failed, checking logs..."
-            # Get recent logs
-            az webapp log tail --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
-            exit 1
-          fi
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+        package: .
