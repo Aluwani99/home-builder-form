@@ -226,9 +226,11 @@ export async function processFileUploads(files, formData, client, province) {
 
   try {
     // Create folder structure: Shared Documents/Home Builders/{Builder Name}/
-    const baseFolder = 'D1 Documents';
-    const homeBuildersFolder = await createFolder(client, siteId, baseFolder, 'Inspectorate');
-    const builderFolder = await createFolder(client, siteId, homeBuildersFolder, formData.builderName);
+const baseFolder = 'D1 Documents';
+
+// Directly create builder folder under baseFolder
+const builderFolder = await createFolder(client, siteId, baseFolder, formData.builderName);
+
     
     // Upload each file to the builder's folder
     for (const file of files) {

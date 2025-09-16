@@ -1057,16 +1057,15 @@
 <div class="form-group">
   <label for="propertyDetails" class="required">Property Details</label>
   <div class="suggestions-container">
-    <textarea id="propertyDetails" name="propertyDetails" rows="4" required 
-              placeholder="Start typing your address (e.g., Stand 23900 Mohau Street)"></textarea>
-    <div class="loading-indicator" id="loadingIndicator">
-      <span class="loading-spinner"></span> Searching addresses...
-    </div>
-    <ul id="addressSuggestions"></ul>
+    <textarea id="propertyDetails" 
+              name="propertyDetails" 
+              rows="4" 
+              required
+              placeholder="Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)">
+    </textarea>
   </div>
   <div class="instructions">
-    <small><i class="fas fa-info-circle"></i> Start typing to see suggestions or</small>
-    <span class="manual-toggle" onclick="enableManualEntry()">enter address manually</span>
+    <small><i class="fas fa-info-circle"></i> Please type your full property address.</small>
   </div>
 </div>
         
@@ -1290,250 +1289,25 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 
-function setupAddressAutocomplete() {
+function setupAddressInput() {
   const propertyInput = document.getElementById('propertyDetails');
-  const suggestionsList = document.getElementById('addressSuggestions');
-  const loadingIndicator = document.getElementById('loadingIndicator');
-  let debounceTimer;
 
-  // Fetch address suggestions from OpenStreetMap
-  async function fetchAddressSuggestions(query) {
-    try {
-      loadingIndicator.classList.add('active');
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=ZA&limit=5`
-      );
-      if (!response.ok) throw new Error(`Server returned ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.error('OSM autocomplete error:', error);
-      throw error;
-    } finally {
-      loadingIndicator.classList.remove('active');
-    }
-  }
-
-  // Enhanced address formatter for South African addresses
-  function formatAddressSuggestion(result) {
-    const addr = result.address;
-    
-    // Extract specific components
-    const houseNumber = addr.house_number || addr.housenumber || '';
-    const standNumber = addr.stand_number || '';
-    const street = addr.road || addr.street || '';
-    const suburb = addr.suburb || addr.neighbourhood || '';
-    const city = addr.city || addr.town || '';
-    const ward = addr.city_district || '';
-    const postcode = addr.postcode || '';
-    const province = addr.state || '';
-    const country = addr.country || 'South Africa';
-
-    // Build address in exact format: Number Street, Suburb, City Ward, Postcode, Province, Country
-    const addressParts = [];
-    
-    // Number + Street
-    let streetPart = '';
-    if (standNumber) {
-        streetPart = `Stand ${standNumber} ${street}`;
-    } else if (houseNumber) {
-        streetPart = `${houseNumber} ${street}`;
-    } else if (street) {
-        streetPart = street;
-    }
-    
-    if (streetPart) {
-        addressParts.push(streetPart);
-    }
-    
-    // Suburb (lowercase)
-    if (suburb) {
-        addressParts.push(suburb.toLowerCase());
-    }
-    
-    // City + Ward
-    let cityPart = '';
-    if (city && ward) {
-        cityPart = `${city} ${ward}`;
-    } else if (city) {
-        cityPart = city;
-    } else if (ward) {
-        cityPart = ward;
-    }
-    
-    if (cityPart) {
-        addressParts.push(cityPart);
-    }
-    
-    // Postal Code
-    if (postcode) {
-        addressParts.push(postcode);
-    }
-    
-    // Province
-    if (province) {
-        addressParts.push(province);
-    }
-    
-    // Country
-    addressParts.push(country);
-
-    // Join all parts
-    let formatted = addressParts.join(', ');
-    
-    // Capitalize properly (except suburbs)
-    formatted = formatted
-        .split(', ')
-        .map((part, index) => {
-            // Keep suburbs lowercase (second position)
-            if (index === 1 && suburb) {
-                return part.toLowerCase();
-            }
-            // Capitalize other parts
-            return part.replace(/\b\w/g, char => char.toUpperCase());
-        })
-        .join(', ');
-
-    return formatted;
-  }
-
-  // Handle input with debounce
-  propertyInput.addEventListener('input', () => {
-    const query = propertyInput.value.trim();
-    if (query.length < 3) {
-      suggestionsList.innerHTML = '';
-      suggestionsList.classList.remove('active');
-      updateReviewSection();
-      return;
-    }
-
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-      try {
-        const results = await fetchAddressSuggestions(query);
-        if (results.length === 0) {
-          suggestionsList.innerHTML = `
-            <li class="no-results">
-              <i class="fas fa-search suggestion-icon"></i>
-              <div>
-                <div>No addresses found</div>
-                <small>You can manually type your full address</small>
-              </div>
-            </li>
-            <li class="manual-entry" onclick="enableManualEntry()">
-              <i class="fas fa-edit suggestion-icon"></i>
-              <div>
-                <div>Enter address manually</div>
-                <small>Click to type your complete address</small>
-              </div>
-            </li>
-          `;
-        } else {
-          suggestionsList.innerHTML = results.map(result =>
-            `<li data-value="${formatAddressSuggestion(result)}">
-              <i class="fas fa-map-marker-alt suggestion-icon"></i>
-              <div>${formatAddressSuggestion(result)}</div>
-            </li>`
-          ).join('');
-        }
-        suggestionsList.classList.add('active');
-      } catch (err) {
-        suggestionsList.innerHTML = `
-          <li class="error">
-            <i class="fas fa-exclamation-triangle suggestion-icon"></i>
-            <div>
-              <div>Error loading addresses</div>
-              <small>You can manually type your address below</small>
-            </div>
-          </li>
-          <li class="manual-entry" onclick="enableManualEntry()">
-            <i class="fas fa-edit suggestion-icon"></i>
-            <div>
-              <div>Enter address manually</div>
-              <small>Click to type your complete address</small>
-            </div>
-          </li>
-        `;
-        suggestionsList.classList.add('active');
-      }
-    }, 500);
-  });
-
-  // Click suggestion to fill textarea
-  suggestionsList.addEventListener('click', (e) => {
-    const li = e.target.closest('li');
-    if (!li || li.classList.contains('error') || li.classList.contains('no-results')) return;
-    
-    if (li.classList.contains('manual-entry')) {
-      enableManualEntry();
-      return;
-    }
-    
-    propertyInput.value = li.dataset.value;
-    suggestionsList.innerHTML = '';
-    suggestionsList.classList.remove('active');
-    updateReviewSection();
-  });
-
-  // Function to enable manual entry
-  window.enableManualEntry = function() {
-    suggestionsList.innerHTML = '';
-    suggestionsList.classList.remove('active');
-    propertyInput.focus();
-    propertyInput.placeholder = "Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)";
-  };
-
-  // Close suggestions if clicked outside
-  document.addEventListener('click', (e) => {
-    if (!propertyInput.contains(e.target) && !suggestionsList.contains(e.target)) {
-      suggestionsList.classList.remove('active');
-    }
-  });
-
-  // Keyboard navigation for suggestions
-  propertyInput.addEventListener('keydown', (e) => {
-    if (!suggestionsList.classList.contains('active')) return;
-    const suggestions = Array.from(suggestionsList.querySelectorAll('li:not(.error):not(.no-results):not(.manual-entry)'));
-    if (!suggestions.length) return;
-    const currentFocus = suggestionsList.querySelector('li.highlighted');
-    let index = currentFocus ? suggestions.indexOf(currentFocus) : -1;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      index = (index + 1) % suggestions.length;
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      index = (index - 1 + suggestions.length) % suggestions.length;
-    } else if (e.key === 'Enter' && currentFocus) {
-      e.preventDefault();
-      propertyInput.value = currentFocus.dataset.value;
-      suggestionsList.classList.remove('active');
-      updateReviewSection();
-      return;
-    } else if (e.key === 'Escape') {
-      suggestionsList.classList.remove('active');
-      return;
-    } else return;
-
-    suggestions.forEach(s => s.classList.remove('highlighted'));
-    suggestions[index].classList.add('highlighted');
-    suggestions[index].scrollIntoView({ block: 'nearest' });
-  });
-
-  // Show suggestions on focus
-  propertyInput.addEventListener('focus', () => {
-    if (propertyInput.value.trim().length >= 3 && suggestionsList.children.length > 0) {
-      suggestionsList.classList.add('active');
-    }
-  });
-
-  // Allow manual typing even when suggestions are shown
+  // Optional: prevent form submission on Enter inside textarea
   propertyInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && !suggestionsList.classList.contains('active')) {
-      e.preventDefault(); // Prevent form submission
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
     }
+  });
+
+  // Optional: live update review section (if you still use it)
+  propertyInput.addEventListener('input', () => {
+    updateReviewSection && updateReviewSection();
   });
 }
+
+// Call setup
+setupAddressInput();
+
 
     function showStep(step) {
       document.querySelectorAll('.form-section').forEach((section, index) => {
