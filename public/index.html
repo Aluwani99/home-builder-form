@@ -1057,12 +1057,12 @@
 <div class="form-group">
   <label for="propertyDetails" class="required">Property Details</label>
   <div class="suggestions-container">
-    <textarea id="propertyDetails" 
-              name="propertyDetails" 
-              rows="4" 
-              required
-              placeholder="Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)">
-    </textarea>
+<textarea id="propertyDetails" 
+          name="propertyDetails" 
+          rows="4" 
+          required
+          placeholder="Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)">
+        </textarea>
   </div>
   <div class="instructions">
     <small><i class="fas fa-info-circle"></i> Please type your full property address.</small>
@@ -1289,24 +1289,25 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 
-function setupAddressInput() {
+  function setupAddressInput() {
   const propertyInput = document.getElementById('propertyDetails');
 
-  // Optional: prevent form submission on Enter inside textarea
+  // Ensure placeholder shows on load
+  propertyInput.value = '';
+
   propertyInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
     }
   });
 
-  // Optional: live update review section (if you still use it)
   propertyInput.addEventListener('input', () => {
     updateReviewSection && updateReviewSection();
   });
 }
 
-// Call setup
 setupAddressInput();
+
 
 
     function showStep(step) {
@@ -1399,7 +1400,7 @@ setupAddressInput();
       }
     }
 
-    // Show the success screen
+
 // Show the success screen
 function showSuccessScreen() {
   const successScreen = document.getElementById('successScreen');
