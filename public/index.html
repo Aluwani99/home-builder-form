@@ -1061,8 +1061,8 @@
           name="propertyDetails" 
           rows="4" 
           required
-          placeholder="Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)">
-        </textarea>
+          placeholder="Enter your complete address (Stand/House Number, Street, Suburb, City, Postal Code)"></textarea>
+
   </div>
   <div class="instructions">
     <small><i class="fas fa-info-circle"></i> Please type your full property address.</small>
@@ -1291,9 +1291,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   function setupAddressInput() {
   const propertyInput = document.getElementById('propertyDetails');
-
-  // Ensure placeholder shows on load
-  propertyInput.value = '';
 
   propertyInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
